@@ -1,0 +1,126 @@
+import numpy as np
+
+from typing import Any, Optional, Mapping
+
+from livinglab.base import Device
+
+
+class ThermalBattery(Device):
+    def __init__(
+            self, 
+            efficiency: float, 
+            capacity: float, 
+            loss_coef: float, 
+            initial_soc: float=0.0,
+            max_input_power: Optional[float]=None,
+            max_output_power: Optional[float]=None, 
+            **kwargs: Mapping[str, Any]
+        ):
+        super().__init__(efficiency=efficiency, **kwargs)
+        self.capacity = capacity
+        self.loss_coef = loss_coef
+        self.initial_soc = initial_soc
+        self.max_input_power = max_input_power
+        self.max_output_power = max_output_power
+
+    @property
+    def capacity(self):
+        return self._capacity
+    
+    @property
+    def loss_coef(self):
+        return self._loss_coef
+    
+    @property
+    def initial_soc(self):
+        return self._initial_soc
+    
+    @property
+    def max_input_power(self) -> float:
+        return self._max_input_power
+    
+    @property
+    def max_output_power(self) -> float:
+        return self._max_output_power
+    
+    @property
+    def soc(self):
+        return self._soc
+    
+    @property
+    def energy_init(self):
+        if self.time_step == 0:
+            return max(0.0, self._soc[self.time_step]*self._capacity*(1 - self._loss_coef))
+        return max(0.0, self._soc[self.time_step - 1]*self._capacity*(1 - self._loss_coef))
+    
+    @property
+    def energy_balance(self):
+        return self._energy_balance
+        
+    @property
+    def round_trip_efficiency(self):
+        return self._efficiency**0.5
+     
+    @capacity.setter
+    def capacity(self, new_capacity: float):
+        assert new_capacity >= 0, f'Invalid capacity {new_capacity}. Must be >= 0.'
+        self._capacity = new_capacity
+
+    @loss_coef.setter
+    def loss_coef(self, new_coef: float):
+        assert 0.0 <= new_coef <= 1.0, f'Invalid capacity {new_coef}. Must be in [0, 1].'
+        self._loss_coef = new_coef
+
+    @initial_soc.setter
+    def initial_soc(self, new_soc: float):
+        assert 0.0 <= new_soc <= 1.0, f'Invalid capacity {new_soc}. Must be in [0, 1].'
+        self._initial_soc = new_soc
+
+    @max_input_power.setter
+    def max_input_power(self, new_power: float):
+        assert new_power is None or new_power >= 0, f'Invalid input power {new_power}. Must be >= 0.'
+        self._max_input_power = new_power
+
+    @max_output_power.setter
+    def max_output_power(self, new_power: float):
+        assert new_power is None or new_power >= 0, f'Invalid output power {new_power}. Must be >= 0.'
+        self._max_output_power = new_power
+
+    def charge(self, energy: float):
+        """Charges or discharges storage with respect to specified energy while considering `capacity` and `soc_init` limitations and, energy losses to the environment quantified by `round_trip_efficiency`.
+
+        Parameters
+        ----------
+        energy : float
+            Energy to charge if (+) or discharge if (-) in [kWh].
+
+        Notes
+        -----
+        If charging, soc = min(`soc_init` + energy*`round_trip_efficiency`, `capacity`)
+        If discharging, soc = max(0, `soc_init` + energy/`round_trip_efficiency`)
+        """
+        energy_init = self.energy_init
+        
+        # Compute new energy
+        if energy >= 0:
+            energy = energy if self.max_input_power is None else np.nanmin([energy, self.max_input_power])
+            energy_final = min(energy_init + energy*self.round_trip_efficiency, self.capacity)
+        else:
+            energy = energy if self.max_output_power is None else np.nanmax([energy, -self.max_output_power]) 
+            energy_final = max(0.0, energy_init + energy/self.round_trip_efficiency)
+
+        # Set new SoC
+        self._soc[self.time_step] = energy_final/max(self.capacity, 1e-6)
+
+        # Update energy balance
+        delta_energy = energy_final - energy_init
+        if delta_energy >= 0:
+            self._energy_balance[self.time_step] = delta_energy / self.round_trip_efficiency
+        else:
+            self._energy_balance[self.time_step] = delta_energy * self.round_trip_efficiency
+
+    def reset(self):
+        super().reset()
+        self._soc = np.zeros(self.episode_length, dtype=np.float32)
+        self._soc[0] = self.initial_soc
+        self._energy_balance = np.zeros(self.episode_length, dtype=np.float32)
