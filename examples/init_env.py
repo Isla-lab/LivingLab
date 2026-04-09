@@ -10,7 +10,7 @@ def init_env():
     env = gym.make(
         'LivingLab-v0',
         seed=42,
-        path='/home/tiziano-tezze/Documents/University/Master/Borsa/Step2/LivingLab/data/datasets/citylearn_challenge_2023_phase_1',
+        path='../data/datasets/citylearn_challenge_2023_phase_1',
         start_time_step=0,
         end_time_step=720,
         heat_pump_cfgs={
@@ -24,8 +24,11 @@ def init_env():
             'efficiency': 0.95,
             'loss_coef': 1e-05
         },
+        pv_system_cfgs={
+            'nominal_power': 2.4
+        },
         dynamics_cfgs={
-            'path': '/home/tiziano-tezze/Documents/University/Master/Borsa/Step2/LivingLab/data/datasets/citylearn_challenge_2023_phase_1/Building_1.pth',
+            'path': '../data/datasets/citylearn_challenge_2023_phase_1/Building_1.pth',
             'num_layers': 2,
             'input_size': 13,
             'hidden_size': 16,
@@ -76,7 +79,7 @@ def init_env():
                 43.536755
             ],
         },
-        periodic_normalization=True
+        periodic_normalization=False
     )
 
     print(f'##### LIVINGLAB ENV #####')
