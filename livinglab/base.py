@@ -84,5 +84,5 @@ class Device(Environment):
     
     @efficiency.setter
     def efficiency(self, new_eff: float):
-        assert new_eff >= 0, f'Invalid efficiency {new_eff}. Must be >= 0.'
+        assert new_eff is None or new_eff >= 0, f'Invalid efficiency {new_eff}. Must be >= 0.'
         self._efficiency = new_eff

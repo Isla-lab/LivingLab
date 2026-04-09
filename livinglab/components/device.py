@@ -6,7 +6,7 @@ from livinglab.base import Device
 
 
 class ElectricDevice(Device):
-    def __init__(self, efficiency: float, nominal_power: float, **kwargs: Mapping[str, Any]):
+    def __init__(self, efficiency: Optional[float], nominal_power: float, **kwargs: Mapping[str, Any]):
         super().__init__(efficiency=efficiency, **kwargs)
         self.nominal_power = nominal_power
 
@@ -132,6 +132,32 @@ class HeatPump(ElectricDevice):
         return output_power/self.get_cop(outdoor_dry_bulb_temperature)
 
 
-class PVSystem:
-    def __init__(self):
-        pass
+class PVSystem(ElectricDevice):
+    """
+    Base PV system class.
+
+    Parameters
+    ----------
+    :param nominal_power: PV output power [kW].
+    :type nominal_power: float
+    :param **kwargs: Keyword arguments to initialize super class.
+    :type **kwargs: Mapping[str, Any]
+    """
+    def __init__(self, nominal_power: float, **kwargs: Mapping[str, Any]):
+        super().__init__(efficiency=None, nominal_power=nominal_power, **kwargs)
+
+    def get_generation(self, inverter_ac_power_per_kw: float) -> float:
+        """
+        Get solar generation output.
+
+        Parameters
+        ----------
+        :param inverter_ac_power_per_kw: Inverter AC power per kW of PV nominal power [W/kW]
+        :type inverter_ac_power_per_kw: float
+
+        Returns
+        ----------
+        :return: the solar generation output.
+        :rtype: float
+        """
+        return self.nominal_power*inverter_ac_power_per_kw/1000.0

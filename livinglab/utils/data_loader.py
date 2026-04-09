@@ -122,14 +122,15 @@ class EnergySimulation(TimeSeriesData):
         self.hour = np.array(sim_data['hour'], dtype=np.int32)
         self.day_type = np.array(sim_data['day_type'], dtype=np.int32)
 
-        # Additional energy demands
-        self.non_shiftable_load = np.array(sim_data['non_shiftable_load'], dtype=np.float32)
-
         # Ambient's information
         self.indoor_dry_bulb_temperature = np.clip(self.add_gaussian_noise(sim_data['indoor_dry_bulb_temperature']), -90, 57)
         self.indoor_relative_humidity = np.clip(self.add_gaussian_noise(sim_data['indoor_relative_humidity']), 0, 100)
         self.occupant_count = np.array(sim_data['occupant_count'], dtype=np.float32)
         self.indoor_dry_bulb_temperature_cooling_set_point = np.array(sim_data['indoor_dry_bulb_temperature_cooling_set_point'], dtype=np.float32)
+
+        # Additional energy demands
+        self.non_shiftable_load = np.array(sim_data['non_shiftable_load'], dtype=np.float32)
+        self.solar_generation = self.add_gaussian_noise(sim_data['solar_generation'])
 
 class Weather(TimeSeriesData):
     """

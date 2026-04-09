@@ -47,7 +47,7 @@ class LivingLabEnv(gym.Env, Environment):
             end_time_step: int,
             heat_pump_cfgs: Mapping[str, Any],
             thermal_battery_cfgs: Mapping[str, Any],
-            # pv_system_cfgs: Mapping[str, Any],
+            pv_system_cfgs: Mapping[str, Any],
             dynamics_cfgs: Mapping[str, Any],
             periodic_normalization: bool,
             episode_length: Optional[int]=None,
@@ -66,7 +66,7 @@ class LivingLabEnv(gym.Env, Environment):
         # Devices
         self.heat_pump = HeatPump(**heat_pump_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
         self.thermal_battery = ThermalBattery(**thermal_battery_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
-        # self.pv_system = PVSystem(**pv_system_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
+        self.pv_system = PVSystem(**pv_system_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
 
         # Dynamics
         self.dynamics = LSTMDynamics(**dynamics_cfgs)
@@ -238,7 +238,11 @@ class LivingLabEnv(gym.Env, Environment):
         # Estimate space limits
         low, high = {}, {}
         for key in self.observation_names:
-            if key == 'comfort_band':
+            if key == 'solar_generation':
+                low[key] = self.pv_system.get_generation(inverter_ac_power_per_kw=sim_data['solar_generation'].min())
+                high[key] = self.pv_system.get_generation(inverter_ac_power_per_kw=sim_data['solar_generation'].max())
+
+            elif key == 'comfort_band':
                 low[key] = 0.0
                 high[key] = sim_data[key].max() 
 
@@ -247,19 +251,23 @@ class LivingLabEnv(gym.Env, Environment):
                 high[key] = 1.0
 
             elif key == 'net_electricity_consumption':
-                low[key] = 0.0
+                low[key] = -self.pv_system.get_generation(inverter_ac_power_per_kw=sim_data['solar_generation'].max())
                 high[key] = sim_data['non_shiftable_load'].max() + self.heat_pump.nominal_power
 
             elif key == 'cooling_demand':
                 low[key] = 0.0
                 high[key] = self.heat_pump.nominal_power
 
-            elif periodic_normalization and key in self.periodic_observations_metadata.keys():
-                periodic_observations = self.periodic_observations_metadata
-                pn = PeriodicNormalization(max(periodic_observations[key]))
-                x_sin, x_cos = pn * np.array(periodic_observations[key])
-                low[f'{key}_sin'], high[f'{key}_sin'] = x_sin.min(), x_sin.max()
-                low[f'{key}_cos'], high[f'{key}_cos'] = x_cos.min(), x_cos.max()
+            elif key in self.periodic_observations_metadata.keys():
+                periodic_observations = self.periodic_observations_metadata[key]
+                if periodic_normalization:
+                    pn = PeriodicNormalization(max(periodic_observations))
+                    x_sin, x_cos = pn * np.array(periodic_observations)
+                    low[f'{key}_sin'], high[f'{key}_sin'] = x_sin.min(), x_sin.max()
+                    low[f'{key}_cos'], high[f'{key}_cos'] = x_cos.min(), x_cos.max()
+                else:
+                    low[key] = min(periodic_observations)
+                    high[key] = max(periodic_observations)
 
             else:
                 low[key] = sim_data[key].min()
@@ -303,5 +311,8 @@ class LivingLabEnv(gym.Env, Environment):
             'cooling_demand': self.heat_pump.electricity_consumption[self.time_step], # <- Total Heat Pump electricity consumption
             'net_electricity_consumption': self.net_electricity_consumption[self.time_step]
         }
+
+        # Update solar generation
+        observations['solar_generation'] = self.pv_system.get_generation(inverter_ac_power_per_kw=observations['solar_generation'])
 
         return observations 
