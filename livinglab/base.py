@@ -9,7 +9,7 @@ class Environment(ABC):
         self.seed = seed
         self.start_time_step = start_time_step
         self.end_time_step = end_time_step
-        self.episode_length = episode_length if episode_length is not None else end_time_step - start_time_step
+        self.episode_length = episode_length
 
     @property
     def seed(self):
@@ -30,6 +30,14 @@ class Environment(ABC):
     @property
     def episode_length(self):
         return self._episode_length
+    
+    @property
+    def episode_start_time_step(self):
+        return self._episode_start_time_step
+    
+    @property
+    def episode_end_time_step(self):
+        return self._episode_end_time_step
     
     @seed.setter
     def seed(self, new_seed: int):
@@ -57,6 +65,23 @@ class Environment(ABC):
             self._episode_length = (self._end_time_step - self._start_time_step) + 1
         else:
             self._episode_length = new_len
+
+        if (self._end_time_step + 1) % self._episode_length != 0:
+            print(f'[WARN] Episode length {self._episode_length} does not assure a full simulation coverage.')
+
+    @episode_start_time_step.setter
+    def episode_start_time_step(self, new_step: int):
+        assert self.start_time_step <= new_step <= self.end_time_step, \
+            f'Invalid episode start time step: {new_step} not in [{self.start_time_step}, {self.end_time_step}]'
+        self._episode_start_time_step = new_step
+    
+    @episode_end_time_step.setter
+    def episode_end_time_step(self, new_step: int):
+        assert self.start_time_step <= new_step <= self.end_time_step, \
+            f'Invalid episode end time step: {new_step} not in [{self.start_time_step}, {self.end_time_step}]'
+        assert new_step > self._episode_start_time_step, \
+            f'Invalid episode start/end steps (start={self._episode_start_time_step} >= end={new_step}).'
+        self._episode_end_time_step = new_step
 
     def step(self):
         self.time_step += 1

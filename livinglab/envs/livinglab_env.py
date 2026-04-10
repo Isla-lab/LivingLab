@@ -138,8 +138,6 @@ class LivingLabEnv(gym.Env, Environment):
         if seed is not None:
             self.seed = seed
 
-        # TODO: Time steps reset for time series
-
         # Reset devices
         self.heat_pump.reset()
         self.thermal_battery.reset()
