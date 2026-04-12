@@ -129,6 +129,7 @@ class EnergySimulation(TimeSeriesData):
         self.indoor_dry_bulb_temperature_cooling_set_point = np.array(sim_data['indoor_dry_bulb_temperature_cooling_set_point'], dtype=np.float32)
 
         # Additional energy demands
+        self.cooling_demand = np.array(sim_data['cooling_demand'], dtype=np.float32)
         self.non_shiftable_load = np.array(sim_data['non_shiftable_load'], dtype=np.float32)
         self.solar_generation = self.add_gaussian_noise(sim_data['solar_generation'])
 
