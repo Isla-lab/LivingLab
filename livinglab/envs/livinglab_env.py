@@ -1,14 +1,15 @@
+import torch
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
 import os
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union, Mapping
+from typing import Any, Optional, Union, Callable, Tuple, List, Mapping
 
 from livinglab.base import Environment
 from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
-from livinglab.utils import EnergySimulation, Weather, Pricing, CarbonEmissions, PeriodicNormalization
+from livinglab.utils import EnergySimulation, Weather, Pricing, CarbonEmissions, PeriodicNormalization, ComfortRewardFuction
 
 
 class LivingLabEnv(gym.Env, Environment):
@@ -76,6 +77,9 @@ class LivingLabEnv(gym.Env, Environment):
         self.observation_space = self.estimate_observation_space(periodic_normalization=periodic_normalization)
         self.action_space = self.estimate_action_space()
 
+        # Reward Function
+        self.reward_fn = ComfortRewardFuction()
+
     @property
     def observation_names(self):
         sim_data_names = self.energy_simulation.observation_names + self.weather.observation_names + self.pricing.observation_names + self.carbon_intensity.observation_names                
@@ -87,6 +91,70 @@ class LivingLabEnv(gym.Env, Environment):
     def periodic_observations_metadata(self):
         return self._periodic_observations_metadata
     
+    @property
+    def terminated(self):
+        return self.episode_time_step >= (self.episode_length - 1)
+    
+    @property
+    def truncated(self):
+        return False
+    
+    @property
+    def info(self):
+        _info = {}
+        if self.terminated:
+            _info['reward'] = {
+                'min': self._episode_rewards.min(),
+                'max': self._episode_rewards.max(),
+                'sum': self._episode_rewards.sum(),
+                'mean': self._episode_rewards.mean(),
+            }
+
+            # Devices' electricity consumption information
+            heat_pump_electricity_consumption = self.heat_pump.electricity_consumption
+            _info['heat_pump_electricity_consumption'] = {
+                'min': heat_pump_electricity_consumption.min(),
+                'max': heat_pump_electricity_consumption.max(),
+                'sum': heat_pump_electricity_consumption.sum(),
+                'mean': heat_pump_electricity_consumption.mean(),
+            }
+
+            thermal_battery_electricity_consumption = self.heat_pump.get_input_power(
+                output_power=self.thermal_battery.energy_balance,
+                outdoor_dry_bulb_temperature=self.weather.outdoor_dry_bulb_temperature[self.episode_start_time_step:self.episode_end_time_step+1]
+            )
+            _info['thermal_battery_electricity_consumption'] = {
+                'min': thermal_battery_electricity_consumption.min(),
+                'max': thermal_battery_electricity_consumption.max(),
+                'sum': thermal_battery_electricity_consumption.sum(),
+                'mean': thermal_battery_electricity_consumption.mean(),
+            }
+
+
+            # Total electricity consumption information
+            _info['net_electricity_consumption'] = {
+                'min': self._net_electricity_consumption.min(),
+                'max': self._net_electricity_consumption.max(),
+                'sum': self._net_electricity_consumption.sum(),
+                'mean': self._net_electricity_consumption.mean(),
+            }
+
+            _info['net_electricity_consumption_cost'] = {
+                'min': self._net_electricity_consumption_cost.min(),
+                'max': self._net_electricity_consumption_cost.max(),
+                'sum': self._net_electricity_consumption_cost.sum(),
+                'mean': self._net_electricity_consumption_cost.mean(),
+            }
+
+            _info['net_electricity_consumption_emissions'] = {
+                'min': self._net_electricity_consumption_emissions.min(),
+                'max': self._net_electricity_consumption_emissions.max(),
+                'sum': self._net_electricity_consumption_emissions.sum(),
+                'mean': self._net_electricity_consumption_emissions.mean(),
+            }
+
+        return _info
+
     @property
     def observation_space(self):
         return self._observation_space
@@ -100,8 +168,24 @@ class LivingLabEnv(gym.Env, Environment):
         return self._action_space
     
     @property
+    def episode_rewards(self):
+        return self._episode_rewards
+    
+    @property
     def net_electricity_consumption(self):
         return self._net_electricity_consumption
+    
+    @property
+    def net_electricity_consumption_cost(self):
+        return self._net_electricity_consumption_cost
+    
+    @property
+    def net_electricity_consumption_emissions(self):
+        return self._net_electricity_consumption_emissions
+    
+    @property
+    def simulate_dynamics(self):
+        return self.dynamics._model_input[0][0] is not None
 
     @periodic_observations_metadata.setter
     def periodic_observations_metadata(self, new_metadata: Mapping[str, Tuple[Union[int, float], Union[int, float]]]):
@@ -141,16 +225,59 @@ class LivingLabEnv(gym.Env, Environment):
         # Reset devices
         self.heat_pump.reset()
         self.thermal_battery.reset()
+        self.pv_system.reset()
 
         # Reset dynamics
         self.dynamics.reset()
 
         # Reset additional variables
+        self._episode_rewards = np.zeros(self.episode_length, dtype=np.float32)
         self._net_electricity_consumption = np.zeros(self.episode_length, dtype=np.float32)
+        self._net_electricity_consumption_cost = np.zeros(self.episode_length, dtype=np.float32)
+        self._net_electricity_consumption_emissions = np.zeros(self.episode_length, dtype=np.float32)
 
-        return self.observations(periodic_normalization=self.periodic_normalization, names=options.get('names', False)), {}
+        return self.observations(names=options.get('names', False)), {}
+    
+    def step(self, actions: Union[np.ndarray | List[float]]):
+        assert len(actions) == self.action_space.shape[0] 
+        if isinstance (actions, np.ndarray):
+            actions = actions.tolist()
 
-    def observations(self, periodic_normalization: bool=False, names: bool=False) -> Union[np.ndarray, Mapping[str, int|float]]:
+        # Pair actions to names
+        action_dict = {}
+        for name, action in zip(self.action_names, actions):
+            action_dict[f'{name}_action'] = action
+
+        # Apply actions to the environment
+        self.apply_actions(**action_dict)
+
+        # Update indoor temperature via dynamics
+        self._update_dynamics_input()
+        if self.simulate_dynamics:
+            self.update_indoor_dry_bulb_temperature()
+
+        # Update environment variables (reflect effects of actions)
+        net_electricity_consumption = (
+            self.energy_simulation.non_shiftable_load[self.time_step] +
+            self.heat_pump.electricity_consumption[self.episode_time_step]
+        ) - self.pv_system.get_generation(
+                inverter_ac_power_per_kw=self.energy_simulation.solar_generation[self.time_step]
+            )
+        self._net_electricity_consumption[self.episode_time_step] = net_electricity_consumption
+        self._net_electricity_consumption_cost[self.episode_time_step] = net_electricity_consumption * self.pricing.electricity_pricing[self.time_step] 
+        self._net_electricity_consumption_emissions[self.episode_time_step] = net_electricity_consumption * self.carbon_intensity.carbon_intensity[self.time_step]
+
+        # Compute reward
+        reward_obs = self.observations(past=False, names=True)
+        reward = self.reward_fn.calculate(observations=reward_obs)
+        self._episode_rewards[self.episode_time_step] = reward
+
+        # Advance to the next time step
+        self._next_time_step()
+
+        return self.observations(), reward, self.terminated, self.truncated, self.info
+
+    def observations(self, periodic_normalization: Optional[bool]=None, past: bool=True, names: bool=False) -> Union[np.ndarray, Mapping[str, int|float]]:
         """
         Return observations at the current `self.time_step`.
 
@@ -166,8 +293,11 @@ class LivingLabEnv(gym.Env, Environment):
         :return: the current observation
         :rtype: Union[np.ndarray, Mapping[str, int|float]]
         """
+        if periodic_normalization is None:
+            periodic_normalization = self.periodic_normalization
+
         # Observations at current `self.time_step`
-        data = self._get_observations_data()
+        data = self._get_observations_data(past=past)
         observations = {}
 
         # Periodic observations normalization
@@ -191,7 +321,48 @@ class LivingLabEnv(gym.Env, Environment):
         
         return np.array(list(observations.values()), dtype=np.float32)
     
-    def estimate_observation_space(self, periodic_normalization: bool=False) -> spaces.Box:
+    def apply_actions(self, heat_pump_action: float, thermal_battery_action: float):
+        """
+        Apply actions to the environment and simulate their impact by:
+        - updating cooling/heating demand for the next time step;
+        - charging/discharging the thermal battery.
+
+        The order of execution depends on the polarity of the thermal battery action:
+        - when discarching, `thermal_battery` is executed first;
+        - when charging, `heat_pump` is executed first.
+
+        This ensures that the discharged energy from the thermal battery is considered when allocating
+        electricity for the heat pump to meet the LivingLab demand.
+
+        Parameters
+        ----------
+        :param heat_pump_action: fraction of the Heat Pump `nominal_power` to make available.
+        :type heat_pump_action: float
+        :param thermal_battery_action: fraction of the Thermal Battery `capacity` to charge\discharge.
+        :type thermal_battery_action: float
+        """
+
+        # Default action priority
+        actions: Mapping[str, Tuple[Callable, Any]] = {
+            'cooling_demand': (self.update_cooling_demand, (heat_pump_action,)),
+            'heat_pump': (self.update_energy_from_heat_pump, ()),
+            'thermal_battery': (self.update_thermal_battery, (thermal_battery_action,))
+        }
+        priority_list = list(actions.keys())
+
+        # Check priority of `thermal_battery_action`
+        if thermal_battery_action < 0.0:
+            heat_pump_idx = priority_list.index('heat_pump')
+            thermal_battery_idx = priority_list.index('thermal_battery')
+            priority_list[heat_pump_idx] = 'thermal_battery'
+            priority_list[thermal_battery_idx] = 'heat_pump'
+
+        # Apply actions according to the priority
+        for key in priority_list:
+            func, args = actions[key]
+            func(*args)
+    
+    def estimate_observation_space(self, periodic_normalization: Optional[bool]=None) -> spaces.Box:
         """
         Estimate observation space from simulation data.
 
@@ -205,13 +376,16 @@ class LivingLabEnv(gym.Env, Environment):
         :return: the estimated observation space
         :rtype: gym.spaces.Box
         """
+        if periodic_normalization is None:
+            periodic_normalization = self.periodic_normalization
+            
         # Get observation space limits
         low, high = self.estimate_observation_space_limits(periodic_normalization=periodic_normalization)
         low, high = list(low.values()), list(high.values())
 
         return spaces.Box(low=np.array(low, dtype=np.float32), high=np.array(high, dtype=np.float32), dtype=np.float32)
 
-    def estimate_observation_space_limits(self, periodic_normalization: bool=False) -> Tuple[Mapping[str, float], Mapping[str, float]]:
+    def estimate_observation_space_limits(self, periodic_normalization: Optional[bool]=None) -> Tuple[Mapping[str, float], Mapping[str, float]]:
         """
         Estimate observation space limits for each variable from simulation data.
 
@@ -225,6 +399,9 @@ class LivingLabEnv(gym.Env, Environment):
         :return: the estimated observation space limits
         :rtype: Tuple[Mapping[str, float], Mapping[str, float]]
         """
+        if periodic_normalization is None:
+            periodic_normalization = self.periodic_normalization
+
         # Get simulation data to estimate space limits
         sim_data = {
             **self.energy_simulation.observations(),
@@ -254,7 +431,7 @@ class LivingLabEnv(gym.Env, Environment):
 
             elif key == 'cooling_demand':
                 low[key] = 0.0
-                high[key] = self.heat_pump.nominal_power
+                high[key] = sim_data[key].max()
 
             elif key in self.periodic_observations_metadata.keys():
                 periodic_observations = self.periodic_observations_metadata[key]
@@ -296,21 +473,158 @@ class LivingLabEnv(gym.Env, Environment):
                 high.append(limit)
 
         return spaces.Box(low=np.array(low, dtype=np.float32), high=np.array(high, dtype=np.float32), dtype=np.float32)
+    
+    def update_cooling_demand(self, heat_pump_action: float):
+        """
+        Update the space cooling demand for both the current `time_step`.
 
-    def _get_observations_data(self) -> Mapping[str, Union[int, float]]:        
+        Parameters
+        ----------
+        :param heat_pump_action: fraction of the Heat Pump `nominal_power` made available for space cooling.
+        :type heat_pump_action: float
+        """
+        # Calculate cooling demand according to the heat pump action
+        if self.simulate_dynamics:
+            output_power = heat_pump_action * self.heat_pump.nominal_power
+            demand = self.heat_pump.get_max_output_power(
+                outdoor_dry_bulb_temperature=self.weather.outdoor_dry_bulb_temperature[self.time_step],
+                max_electric_power=output_power
+            )
+
+            # Update demand for both the current and the next time step
+            self.energy_simulation.cooling_demand[self.time_step] = demand
+
+    def update_energy_from_heat_pump(self):
+        """
+        Update Heat Pump electricity consumption given the current `time_step` cooling demand.
+        """
+        # Retreive current observations
+        demand = self.energy_simulation.cooling_demand[self.time_step]
+        temperature = self.weather.outdoor_dry_bulb_temperature[self.time_step]
+        thermal_battery_output = min(self.thermal_battery.energy_balance[self.episode_time_step], 0.0)
+
+        # Maximum possible heat pump output
+        max_hp_output = self.heat_pump.get_max_output_power(outdoor_dry_bulb_temperature=temperature, max_electric_power=None)
+        assert demand <= max_hp_output, f'[STEP:{self.time_step}] Cooling demand exceeds Heat Pump maximum output ' + \
+            f'(demand={demand} > max_output={max_hp_output})'
+
+        # Actual Heat Pump output and consumption
+        heat_pump_output = min(demand - thermal_battery_output, max_hp_output)
+        electricity_consumption = self.heat_pump.get_input_power(output_power=heat_pump_output, outdoor_dry_bulb_temperature=temperature)
+        assert electricity_consumption >= 0.0, f'[STEP: {self.time_step}] Negative electricity consumption for cooling demand. Found {electricity_consumption}'
+
+        # Update
+        self.heat_pump.update_electricity_consumption(electricity_consumption)
+
+    def update_thermal_battery(self, thermal_battery_action: float):
+        """
+        Charge/Discharge the Thermal Battery for the current `time_step`.
+
+        Parameters
+        ----------
+        :param thermal_battery_action: fraction of the Thermal Battery `capacity` to charge\discharge.
+        :type thermal_battery_action: float
+        """
+        energy = thermal_battery_action * self.thermal_battery.capacity
+        temerature = self.weather.outdoor_dry_bulb_temperature[self.time_step]
+
+        # Charge the Thermal Battery via the Heat Pump
+        if energy > 0.0:
+            max_hp_output = self.heat_pump.get_max_output_power(outdoor_dry_bulb_temperature=temerature, max_electric_power=None)
+            energy = min(energy, max_hp_output)
+
+        # Supply the cooling demand via the Thermal Battery first
+        else:
+            demand = self.energy_simulation.cooling_demand[self.time_step]
+            energy = max(energy, -demand)
+
+        # Update the battery status
+        self.thermal_battery.charge(energy)
+
+        # Compute the required electricity to charge the battery
+        charged_energy = max(self.thermal_battery.energy_balance[self.episode_time_step], 0.0)
+        electricity_consumption = self.heat_pump.get_input_power(output_power=charged_energy, outdoor_dry_bulb_temperature=temerature)
+        self.heat_pump.update_electricity_consumption(electricity_consumption)
+
+    def update_indoor_dry_bulb_temperature(self):
+        """
+        Predict and update the indoor temperature for the current `time_step`.
+        """
+        # Predict
+        input_tensor = self._get_dynamics_input()
+        hidden_state = tuple([h.data for h in self.dynamics.hidden_state])
+        indoor_dry_bulb_temperature_norm, self.dynamics.hidden_state = self.dynamics(input_tensor, h=hidden_state)
+
+        # Update indoor dry bulb temperature in the model's input
+        idx = self.dynamics.input_observation_names.index('indoor_dry_bulb_temperature')
+        self.dynamics.model_input[idx][-1] = indoor_dry_bulb_temperature_norm.item() 
+
+        # Unormalize and update indoor dry bulb temperature in simulation for the current time step
+        min_, max_ = self.dynamics.input_norm_min[idx], self.dynamics.input_norm_max[idx]
+        indoor_dry_bulb_temperature = indoor_dry_bulb_temperature_norm*(max_ - min_) + min_
+        self.energy_simulation.indoor_dry_bulb_temperature[self.time_step] = indoor_dry_bulb_temperature.item()
+
+    def _get_observations_data(self, past: bool=True) -> Mapping[str, Union[int, float]]:        
+        # Current simulation data
         observations = {
-            # Simulation data
             **self.energy_simulation.observations(time_step=self.time_step),
             **self.weather.observations(time_step=self.time_step),
             **self.pricing.observations(time_step=self.time_step),
-            **self.carbon_intensity.observations(time_step=self.time_step),
-            # Devices info
-            'thermal_battery_soc': self.thermal_battery.soc[self.time_step],
-            'cooling_demand': self.heat_pump.electricity_consumption[self.time_step], # <- Total Heat Pump electricity consumption
-            'net_electricity_consumption': self.net_electricity_consumption[self.time_step]
+            **self.carbon_intensity.observations(time_step=self.time_step)
         }
 
         # Update solar generation
         observations['solar_generation'] = self.pv_system.get_generation(inverter_ac_power_per_kw=observations['solar_generation'])
 
-        return observations 
+        # Update with possible past observations
+        past_t = min(self.time_step - 1, 0) if past else self.time_step
+        ep_past_t = min(self.episode_time_step - 1, 0) if past else self.episode_time_step
+        observations.update({
+            'cooling_demand': self.energy_simulation.cooling_demand[past_t] + abs(min(self.thermal_battery.energy_balance[ep_past_t], 0.0)),
+            'thermal_battery_soc': self.thermal_battery.soc[ep_past_t],
+            'net_electricity_consumption': self.net_electricity_consumption[ep_past_t]
+        })
+
+        return observations
+    
+    def _next_time_step(self):
+        # Advance all components
+        self.heat_pump.step()
+        self.thermal_battery.step()
+        self.pv_system.step()
+
+        # Increate `self.time_step`
+        Environment.step(self)
+    
+    def _update_dynamics_input(self, sanity_check: bool=True):
+        # Get current observations
+        obs = self.observations(past=False, names=True)
+        if sanity_check:
+            missing = [name for name in self.dynamics.input_observation_names if name not in obs.keys()]
+            assert len(missing) == 0, f'Missing observations required by the dynamics: {missing}.'
+
+        # Append current observations to the model's input
+        self.dynamics.model_input = [
+            l[-self.dynamics.lookback:] + [(obs[k] - min_)/(max_ - min_)]
+            for l, k, min_, max_ in zip(
+                self.dynamics.model_input,
+                self.dynamics.input_observation_names,
+                self.dynamics.input_norm_min,
+                self.dynamics.input_norm_max
+            )
+        ]
+
+    def _get_dynamics_input(self) -> torch.Tensor:
+        model_input = []
+
+        # Collect observations from the previous time steps
+        for i, k in enumerate(self.dynamics.input_observation_names):
+            if k == 'indoor_dry_bulb_temperature':
+                model_input.append(self.dynamics.model_input[i][:-1])
+            else:
+                model_input.append(self.dynamics.model_input[i][1:])
+
+        # Create torch tensor
+        model_input = torch.tensor(model_input, dtype=torch.float32)
+        model_input = model_input.T.unsqueeze(0)
+        return model_input
