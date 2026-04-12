@@ -84,7 +84,15 @@ class LSTMDynamics(Dynamics, nn.Module):
         assert new_size is None or new_size > 0, f'Invalid input dimensionality {new_size}. Must be either `None` or > 0.'
         self._input_size = len(self.input_observation_names) if new_size is None else new_size
 
-    def forward(self, x: torch.Tensor, h):
+    @model_input.setter
+    def model_input(self, new_input):
+        self._model_input = new_input
+
+    @hidden_state.setter
+    def hidden_state(self, new_h: Tuple[torch.Tensor, torch.Tensor]):
+        self._hidden_state = new_h
+
+    def forward(self, x: torch.Tensor, h: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         lstm_out, h = self.l_lstm(x, h)
         lstm_out = self.dropout(lstm_out)
         out = lstm_out[:, -1, :]

@@ -49,9 +49,8 @@ class ThermalBattery(Device):
     
     @property
     def energy_init(self):
-        if self.time_step == 0:
-            return max(0.0, self._soc[self.time_step]*self._capacity*(1 - self._loss_coef))
-        return max(0.0, self._soc[self.time_step - 1]*self._capacity*(1 - self._loss_coef))
+        time_step = max(self.episode_time_step-1, 0)
+        return max(0.0, self._soc[time_step]*self._capacity*(1 - self._loss_coef))
     
     @property
     def energy_balance(self):
@@ -110,14 +109,14 @@ class ThermalBattery(Device):
             energy_final = max(0.0, energy_init + energy/self.round_trip_efficiency)
 
         # Set new SoC
-        self._soc[self.time_step] = energy_final/max(self.capacity, 1e-6)
+        self._soc[self.episode_time_step] = energy_final/max(self.capacity, 1e-6)
 
         # Update energy balance
         delta_energy = energy_final - energy_init
         if delta_energy >= 0:
-            self._energy_balance[self.time_step] = delta_energy / self.round_trip_efficiency
+            self._energy_balance[self.episode_time_step] = delta_energy / self.round_trip_efficiency
         else:
-            self._energy_balance[self.time_step] = delta_energy * self.round_trip_efficiency
+            self._energy_balance[self.episode_time_step] = delta_energy * self.round_trip_efficiency
 
     def reset(self):
         super().reset()

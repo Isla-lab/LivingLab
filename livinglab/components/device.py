@@ -20,7 +20,7 @@ class ElectricDevice(Device):
     
     @property
     def available_nominal_power(self):
-        return self._nominal_power - self._electricity_consumption[self.time_step]
+        return self._nominal_power - self._electricity_consumption[self.episode_time_step]
     
     @nominal_power.setter
     def nominal_power(self, new_pow: float):
@@ -30,7 +30,7 @@ class ElectricDevice(Device):
     def update_electricity_consumption(self, electricity_consumption: float, enforce_polarity: bool=True):
         assert not enforce_polarity or electricity_consumption >= 0.0, \
             f'Invalid electricity consumption value {electricity_consumption}. Must be >= 0.'
-        self._electricity_consumption[self.time_step] += electricity_consumption
+        self._electricity_consumption[self.episode_time_step] += electricity_consumption
 
     def reset(self):
         super().reset()
