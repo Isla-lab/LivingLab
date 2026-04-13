@@ -15,7 +15,8 @@ class RewardFunction(ABC):
         self.env_metadata = env_metadata
 
     @property
-    def env_metadata(self):
+    def env_metadata(self) -> Mapping[str, Any]:
+        """Environment static information."""
         return self._env_metadata
     
     @env_metadata.setter
@@ -59,11 +60,13 @@ class ComfortRewardFuction(RewardFunction):
         self.exponent = exponent
 
     @property
-    def exponent(self):
+    def exponent(self) -> float:
+        """Exponent to raise the temperature difference to if exceeding `self.comfort_band`."""
         return self._exponent
     
     @property
-    def comfort_band(self):
+    def comfort_band(self) -> float:
+        """Setpoint comfort difference (+/-)."""
         return self._comfort_band
     
     @exponent.setter

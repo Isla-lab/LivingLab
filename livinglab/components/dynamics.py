@@ -6,13 +6,16 @@ from abc import ABC, abstractmethod
 from typing import Tuple, List, Union
 
 class Dynamics(ABC):
+    """
+    Environment dynamics base class.
+    """
     def __init__(self):
         pass
 
     @abstractmethod
     def reset(self):
         """
-        Reset `LivingLabEnv` dynamics to the initial state.
+        Reset dynamics to the initial state.
         """
         pass
 

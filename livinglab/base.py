@@ -5,6 +5,20 @@ from typing import Any, Optional, Mapping
 
 
 class Environment(ABC):
+    """
+    Environment element base class.
+
+    Parameters
+    ----------
+    :param seed: Experiment seed for reproducibility.
+    :type seed: Optional[int]
+    :start_time_step: Simulation start time step.
+    :type start_time_step: int
+    :end_time_step: Simulation end time step.
+    :type end_time_step: int
+    :param episode_length: Time steps duration of a simulation episode.
+    :type episode_length: int
+    """
     def __init__(self, seed: Optional[int], start_time_step: int, end_time_step: int, episode_length: Optional[int]=None):
         self.seed = seed
 
@@ -18,43 +32,53 @@ class Environment(ABC):
         self.episode_counter = -1
 
     @property
-    def seed(self):
+    def seed(self) -> int:
+        """Experiment seed for reproducibility."""
         return self._seed
     
     @property
-    def time_step(self):
+    def time_step(self) -> int:
+        """Current absolute time step."""
         return self._episode_start_time_step + self._episode_time_step
     
     @property
-    def start_time_step(self):
+    def start_time_step(self) -> int:
+        """Simulation start time step."""
         return self._start_time_step
     
     @property
-    def end_time_step(self):
+    def end_time_step(self) -> int:
+        """Simulation end time step."""
         return self._end_time_step
     
     @property
     def episode_length(self):
+        """Time steps duration of a simulation episode."""
         return self._episode_length
     
     @property
     def simulation_episodes(self):
+        """Number of simulation episodes."""
         return self._simulation_episodes
 
     @property
     def episode_counter(self):
+        """Episode counter for sound `self.episode_start_time_step` and `self.episode_end_time_step` retrieval."""
         return self._episode_counter
     
     @property
     def episode_time_step(self):
+        """Current simulation episode time step."""
         return self._episode_time_step
 
     @property
     def episode_start_time_step(self):
+        """Simulation episode start time step."""
         return self._episode_start_time_step
     
     @property
     def episode_end_time_step(self):
+        """Simulation episode end time step."""
         return self._episode_end_time_step
     
     @seed.setter
@@ -119,6 +143,10 @@ class Environment(ABC):
         self.episode_time_step += 1
 
     def reset(self):
+        """
+        Reset the environment to its initial state, 
+        and set next `self.episode_start_time_step` and `self.episode_end_time_step` correclty.
+        """
         self.episode_counter += 1
         self.episode_time_step = 0
         self.episode_start_time_step = (self.episode_counter % self.simulation_episodes) * self.episode_length
@@ -140,6 +168,7 @@ class Device(Environment):
 
     @property
     def efficiency(self):
+        """Device's technical efficiency."""
         return self._efficiency
     
     @efficiency.setter

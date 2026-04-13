@@ -5,7 +5,7 @@ from gymnasium import spaces
 
 import os
 from pathlib import Path
-from typing import Any, Optional, Union, Callable, Tuple, List, Mapping
+from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, List, Mapping
 
 from livinglab.base import Environment
 from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
@@ -19,12 +19,12 @@ class LivingLabEnv(gym.Env, Environment):
     Parameters
     ----------
     :param seed: Experiment seed for reproducibility.
-    :type seed: int
+    :type seed: Optional[int]
     :param path: Path to the directory containing simulation data.
     :type path: Union[str, Path]
-    :param start_time_step:
+    :start_time_step: Simulation start time step.
     :type start_time_step: int
-    :param end_time_step:
+    :end_time_step: Simulation end time step.
     :type end_time_step: int
     :param episode_length: Episode duration in time steps.
     :type episode_length: int
@@ -42,7 +42,7 @@ class LivingLabEnv(gym.Env, Environment):
     
     def __init__(
             self,
-            seed: int, 
+            seed: Optional[int], 
             path: Union[str, Path],
             start_time_step: int,
             end_time_step: int,
@@ -81,26 +81,31 @@ class LivingLabEnv(gym.Env, Environment):
         self.reward_fn = ComfortRewardFuction()
 
     @property
-    def observation_names(self):
+    def observation_names(self) -> List[str]:
+        """Names of all observations that can be returned by the environment."""
         sim_data_names = self.energy_simulation.observation_names + self.weather.observation_names + self.pricing.observation_names + self.carbon_intensity.observation_names                
         device_obs_names = ['thermal_battery_soc', 'cooling_demand', 'net_electricity_consumption']
 
         return sim_data_names + device_obs_names
     
     @property
-    def periodic_observations_metadata(self):
+    def periodic_observations_metadata(self) -> Mapping[str, Any]:
+        """Temporal periodic information observations."""
         return self._periodic_observations_metadata
     
     @property
-    def terminated(self):
+    def terminated(self) -> bool:
+        """Environment's termination signal. True when reaching the end of a simulation episode."""
         return self.episode_time_step >= (self.episode_length - 1)
     
     @property
-    def truncated(self):
+    def truncated(self) -> Literal[False]:
+        """Environment's truncation signal. Never used."""
         return False
     
     @property
-    def info(self):
+    def info(self) -> Mapping[str, Any]:
+        """Information dictionary returned upon calling `self.step()`."""
         _info = {}
         if self.terminated:
             _info['reward'] = {
@@ -156,39 +161,53 @@ class LivingLabEnv(gym.Env, Environment):
         return _info
 
     @property
-    def observation_space(self):
+    def observation_space(self) -> spaces.Box:
+        """
+        Environment's observation space.
+
+        NOTE
+        -----------
+        Currently estimated from simulation data.
+        """
         return self._observation_space
     
     @property
-    def action_names(self):
+    def action_names(self) -> List[str]:
+        """Names of actions that can be applied to the environment."""
         return ['heat_pump', 'thermal_battery']
     
     @property
-    def action_space(self):
+    def action_space(self) -> spaces.Box:
+        """Environment's action space."""
         return self._action_space
     
     @property
-    def episode_rewards(self):
+    def episode_rewards(self) -> List[float]:
+        """List of rewards achieved within an episode."""
         return self._episode_rewards
     
     @property
-    def net_electricity_consumption(self):
+    def net_electricity_consumption(self) -> List[float]:
+        """Total electricity imported from the grid at each `episode_time_step` [kWh]."""
         return self._net_electricity_consumption
     
     @property
-    def net_electricity_consumption_cost(self):
+    def net_electricity_consumption_cost(self) -> List[float]:
+        """Cost of the electricity imported from the grid at each `episode_time_step` [$*kWh]."""
         return self._net_electricity_consumption_cost
     
     @property
-    def net_electricity_consumption_emissions(self):
+    def net_electricity_consumption_emissions(self) -> List[float]:
+        """Emissions of the electricity imported from the grid at each `episode_time_step` [kgCO2*kWh]."""
         return self._net_electricity_consumption_emissions
     
     @property
-    def simulate_dynamics(self):
+    def simulate_dynamics(self) -> bool:
+        """Signal for enabling dynamics simulation."""
         return self.dynamics._model_input[0][0] is not None
 
     @periodic_observations_metadata.setter
-    def periodic_observations_metadata(self, new_metadata: Mapping[str, Tuple[Union[int, float], Union[int, float]]]):
+    def periodic_observations_metadata(self, new_metadata: Mapping[str, Iterable[Union[int, float]]]):
         self._periodic_observations_metadata = dict(**new_metadata)
     
     @observation_space.setter
@@ -238,7 +257,23 @@ class LivingLabEnv(gym.Env, Environment):
 
         return self.observations(names=options.get('names', False)), {}
     
-    def step(self, actions: Union[np.ndarray | List[float]]):
+    def step(self, actions: Union[np.ndarray | List[float]]) -> Tuple[np.ndarray, float, bool, bool, Mapping[str, Any]]:
+        """
+        Run the environment's dynamics at the current `time_step`:
+        1. apply `actions` to the controlled devices;
+        2. update the building's dynamics to update the internal temperature;
+        3. update internal variables to measure the effect of actions.
+
+        Parameters
+        ----------
+        :param actions: Actions to apply to the devices.
+        :type actions: Union[np.ndarray, List[float]]
+
+        Returns
+        ----------
+        :return: a tuple containing next state observations, reward, termination signal and an info dictionary.
+        :rtype: Tuple[np.ndarray, float, bool, bool, Mapping[str, Any]]
+        """
         assert len(actions) == self.action_space.shape[0] 
         if isinstance (actions, np.ndarray):
             actions = actions.tolist()

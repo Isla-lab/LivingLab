@@ -6,16 +6,30 @@ from livinglab.base import Device
 
 
 class ElectricDevice(Device):
+    """
+    Electric device class.
+
+    Parameters
+    ----------
+    :param efficiency: Technical efficiency.
+    :type efficiency: float
+    :param nominal_power: Device's nominal power.
+    :type nominal_power: float
+    :param **kwargs: Other keyword arguments to initialize super classes.
+    :type **kwargs: Mapping[str, Any]
+    """
     def __init__(self, efficiency: Optional[float], nominal_power: float, **kwargs: Mapping[str, Any]):
         super().__init__(efficiency=efficiency, **kwargs)
         self.nominal_power = nominal_power
 
     @property
-    def nominal_power(self):
+    def nominal_power(self) -> float:
+        """Electrical Device's nominal power [kWh]."""
         return self._nominal_power
     
     @property
-    def electricity_consumption(self):
+    def electricity_consumption(self) -> np.ndarray:
+        """Evolution of the electricity consumed by the device within a simulation episode [kWh]."""
         return self._electricity_consumption
     
     @property
@@ -28,27 +42,56 @@ class ElectricDevice(Device):
         self._nominal_power = new_pow
 
     def update_electricity_consumption(self, electricity_consumption: float, enforce_polarity: bool=True):
+        """
+        Update the electricity consumed by the device at the current `episode_time_step`.
+
+        Parameters
+        ----------
+        :param electricity_consumption: Consumed electricity.
+        :type electricity_consumption: float
+        :param enforce_polarity: Whether to consider only positive consumptions.
+        :type enforce_polarity: bool
+        """
         assert not enforce_polarity or electricity_consumption >= 0.0, \
             f'Invalid electricity consumption value {electricity_consumption}. Must be >= 0.'
         self._electricity_consumption[self.episode_time_step] += electricity_consumption
 
     def reset(self):
+        """Reset the Electric Device to its initial state."""
         super().reset()
         self._electricity_consumption = np.zeros(self.episode_length, dtype=np.float32)
 
 
 class HeatPump(ElectricDevice):
+    """
+    Electric device class.
+
+    Parameters
+    ----------
+    :param efficiency: Technical efficiency.
+    :type efficiency: float
+    :param nominal_power: Heat Pump's nominal power.
+    :type nominal_power: float
+    :param mode: Heat Pump HVAC mode (either `cooling` or `heating`).
+    :type mode: str
+    :param target_temperature: Target temperature for CoP measurement.
+    :type target_temperature: float
+    :param **kwargs: Other keyword arguments to initialize super classes.
+    :type **kwargs: Mapping[str, Any]
+    """
     def __init__(self, efficiency: float, nominal_power: float, mode: str, target_temperature: float, **kwargs: Mapping[str, Any]):
         super().__init__(efficiency=efficiency, nominal_power=nominal_power, **kwargs)
         self.mode = mode
         self.target_temperature = target_temperature
 
     @property
-    def mode(self):
+    def mode(self) -> str:
+        """Heat Pump HVAC mode."""
         return self._mode
 
     @property
     def target_temperature(self) -> float:
+        """Heat Pump target temperature for CoP measurement."""
         return self._target_temperature
     
     @mode.setter

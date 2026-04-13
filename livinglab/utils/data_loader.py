@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from abc import ABC, abstractmethod
-from typing import Optional, Mapping, Union, Iterable
+from typing import Optional, Mapping, Union, Iterable, List
 
 
 class TimeSeriesData(ABC):
@@ -44,7 +44,8 @@ class TimeSeriesData(ABC):
         pass
 
     @property
-    def observation_names(self):
+    def observation_names(self) -> List[str]:
+        """List of time series variable names."""
         return [k.lstrip('_') for k, v in vars(self).items() if isinstance(v, np.ndarray)]
     
     def observations(self, time_step: int=None) -> Mapping[str, Union[int, float, np.ndarray]]:

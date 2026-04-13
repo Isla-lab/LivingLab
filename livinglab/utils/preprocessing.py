@@ -1,9 +1,9 @@
 from typing import Any, List, Union
 import numpy as np
 
+
 class Encoder:
-    r"""Base class to transform observations.
-    """
+    """Base class to transform observations."""
     
     def __init__(self):
         pass
@@ -13,9 +13,10 @@ class Encoder:
 
     def __rmul__(self, x: Any):
         raise NotImplementedError
+    
 
 class NoNormalization(Encoder):
-    r"""Use to return observation value as-is i.e. without any transformation.
+    """Use to return observation value as-is i.e. without any transformation.
 
     Examples
     --------
@@ -33,18 +34,20 @@ class NoNormalization(Encoder):
         return x
         
     def __rmul__(self, x: Union[float, int]):
+
         return x
         
 class PeriodicNormalization(Encoder):
-    r"""Use to transform observations that are cyclical/periodic e.g. hour-of-day, day-of-week, e.t.c.
+    """
+    Use to transform observations that are cyclical/periodic e.g. hour-of-day, day-of-week, e.t.c.
 
     Parameters
     ----------
-    x_max : Union[float, int]
-        Maximum observation value.
+    :param x_max: Maximum observation value.
+    :type x_max: Union[float, int]
 
-    Notes
-    -----
+    NOTE
+    ----------
     The transformation returns two values :math:`x_{sin}` and :math:`x_{sin}` defined as:
     
     .. math:: 
@@ -53,7 +56,7 @@ class PeriodicNormalization(Encoder):
         x_{cos} = cos(\frac{2 \cdot \pi \cdot x}{x_{max}})
 
     Examples
-    --------
+    ----------
     >>> x_max = 24
     >>> encoder = PeriodicNormalization(x_max)
     >>> observation = 2
@@ -76,17 +79,19 @@ class PeriodicNormalization(Encoder):
         x_sin = np.sin(x)
         x_cos = np.cos(x)
         return np.array([x_sin, x_cos])
+    
 
 class OnehotEncoding(Encoder):
-    r"""Use to transform unordered categorical observations e.g. boolean daylight savings e.t.c.
+    """
+    Use to transform unordered categorical observations e.g. boolean daylight savings e.t.c.
 
     Parameters
     ----------
-    classes : Union[List[float], List[int], List[str]]
-        Observation categories.
+    :param classes: Observation categories.
+    :type classes: Union[List[float], List[int], List[str]]
 
     Examples
-    --------
+    ----------
     >>> classes = [1, 2, 3, 4]
     >>> encoder = OnehotEncoding(classes)
     # identity_matrix = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
@@ -107,25 +112,27 @@ class OnehotEncoding(Encoder):
         identity_mat = np.eye(len(self.classes))
         return identity_mat[np.array(self.classes) == x][0]
     
+    
 class Normalize(Encoder):
-    r"""Use to transform observations to a value between `x_min` and `x_max` using min-max normalization.
+    """
+    Use to transform observations to a value between `x_min` and `x_max` using min-max normalization.
 
     Parameters
     ----------
-    x_min : Union[float, int]
-        Minimum observation value.
-    x_max : Union[float, int]
-        Maximum observation value.
+    :param x_min: Minimum observation value.
+    :type x_min: Union[float, int]
+    :param x_max: Maximum observation value.
+    :type x_max: Union[float, int]
 
-    Notes
-    -----
+    NOTE
+    ----------
     The transformation returns two values :math:`x_{sin}` and :math:`x_{sin}` defined as:
     
     .. math:: 
         x = \frac{x - x_{min}}{x_{max} - x_{min}}
 
     Examples
-    --------
+    ----------
     >>> x_min = 0
     >>> x_max = 24
     >>> encoder = Normalize(x_min, x_max)
