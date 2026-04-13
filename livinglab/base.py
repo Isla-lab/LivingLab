@@ -14,7 +14,7 @@ class Environment(ABC):
 
         # Episodic info
         self.episode_length = episode_length        
-        self.episodes = (self.end_time_step + 1) // self.episode_length
+        self.simulation_episodes = (self.end_time_step + 1) // self.episode_length
         self.episode_counter = -1
 
     @property
@@ -38,8 +38,8 @@ class Environment(ABC):
         return self._episode_length
     
     @property
-    def episodes(self):
-        return self._episodes
+    def simulation_episodes(self):
+        return self._simulation_episodes
 
     @property
     def episode_counter(self):
@@ -87,14 +87,13 @@ class Environment(ABC):
         if (self._end_time_step + 1) % self._episode_length != 0:
             print(f'[WARN] Episode length {self._episode_length} does not assure a full simulation coverage.')
 
-    @episodes.setter
-    def episodes(self, n: int):
-        assert n > 0, f'Invalid number of episodes n={n}. Must be > 0.'
-        self._episodes = n
+    @simulation_episodes.setter
+    def simulation_episodes(self, n: int):
+        assert n > 0, f'Invalid number of simulation episodes n={n}. Must be > 0.'
+        self._simulation_episodes = n
 
     @episode_counter.setter
     def episode_counter(self, new_value: int):
-        assert new_value <= self.episodes, f'Episode counter exceeding maximum number of episodes (Counter={new_value} > Episodes={self._episodes}).'
         self._episode_counter = new_value
 
     @episode_time_step.setter
@@ -122,7 +121,7 @@ class Environment(ABC):
     def reset(self):
         self.episode_counter += 1
         self.episode_time_step = 0
-        self.episode_start_time_step = self.episode_counter*self.episode_length
+        self.episode_start_time_step = (self.episode_counter % self.simulation_episodes) * self.episode_length
         self.episode_end_time_step = self.episode_start_time_step + self.episode_length - 1
 
 

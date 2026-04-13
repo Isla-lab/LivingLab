@@ -88,7 +88,7 @@ def info():
     env = init_env()
 
     print(f'##### LIVINGLAB ENV #####')
-    print(f'#Episodes: {env.episodes} (length={env.episode_length})\n')
+    print(f'#Episodes: {env.simulation_episodes} (length={env.episode_length})\n')
     print(f'Observation names:\n{env.observation_names}\n')
     print(f'Observation space:\n{env.observation_space}\n')
     print(f'Action names:\n{env.action_names}\n')
@@ -112,7 +112,8 @@ def info():
 def sanity_check():
     env = init_env()
 
-    for _ in range(env.episodes):
+    n_episodes = 100
+    for _ in range(n_episodes):
         env.reset()
         while not env.terminated:
             if env.episode_time_step % 2 == 0:
