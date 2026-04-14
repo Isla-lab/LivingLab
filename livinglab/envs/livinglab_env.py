@@ -4,8 +4,10 @@ import gymnasium as gym
 from gymnasium import spaces
 
 import os
+import json
 from pathlib import Path
 from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, List, Mapping
+from typing_extensions import Self
 
 from livinglab.base import Environment
 from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
@@ -20,8 +22,10 @@ class LivingLabEnv(gym.Env, Environment):
     ----------
     :param seed: Experiment seed for reproducibility.
     :type seed: Optional[int]
-    :param path: Path to the directory containing simulation data.
-    :type path: Union[str, Path]
+    :param base_path: Path to the directory containing simulation data and building dynamics (if not specified).
+    :type base_path: Union[str, Path]
+    :param sim_data_paths: Paths to the simulation data files relative to `base_path`.
+    :type sim_data_paths: Mapping[str, str]
     :start_time_step: Simulation start time step.
     :type start_time_step: int
     :end_time_step: Simulation end time step.
@@ -42,8 +46,8 @@ class LivingLabEnv(gym.Env, Environment):
     
     def __init__(
             self,
-            seed: Optional[int], 
-            path: Union[str, Path],
+            seed: Optional[int],
+            sim_data_paths: Mapping[str, str],
             start_time_step: int,
             end_time_step: int,
             heat_pump_cfgs: Mapping[str, Any],
@@ -51,6 +55,7 @@ class LivingLabEnv(gym.Env, Environment):
             pv_system_cfgs: Mapping[str, Any],
             dynamics_cfgs: Mapping[str, Any],
             periodic_normalization: bool,
+            base_path: Union[str, Path] = '../data',
             episode_length: Optional[int]=None,
         ):
         super().__init__(seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
@@ -59,10 +64,10 @@ class LivingLabEnv(gym.Env, Environment):
         self.periodic_normalization = periodic_normalization
 
         # Simulation data
-        self.energy_simulation = EnergySimulation(path=os.path.join(path, 'Building_1.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
-        self.weather = Weather(path=os.path.join(path, 'weather.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
-        self.pricing = Pricing(path=os.path.join(path, 'pricing.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
-        self.carbon_intensity = CarbonEmissions(path=os.path.join(path, 'carbon_intensity.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.energy_simulation = EnergySimulation(path=os.path.join(base_path, sim_data_paths['energy_simulation'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.weather = Weather(path=os.path.join(base_path, sim_data_paths['weather'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.pricing = Pricing(path=os.path.join(base_path, sim_data_paths['pricing'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.carbon_intensity = CarbonEmissions(path=os.path.join(base_path, sim_data_paths['carbon_intensity'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
 
         # Devices
         self.heat_pump = HeatPump(**heat_pump_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
@@ -70,6 +75,9 @@ class LivingLabEnv(gym.Env, Environment):
         self.pv_system = PVSystem(**pv_system_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
 
         # Dynamics
+        dynamics_path = dynamics_cfgs.get('path', None)
+        if dynamics_path is not None:
+            dynamics_cfgs['path'] = os.path.join(base_path, dynamics_path.lstrip('/'))           
         self.dynamics = LSTMDynamics(**dynamics_cfgs)
 
         # Observation/action spaces
@@ -79,6 +87,14 @@ class LivingLabEnv(gym.Env, Environment):
 
         # Reward Function
         self.reward_fn = ComfortRewardFuction()
+
+    @staticmethod
+    def from_json(config: Union[str, Path, Mapping[str, Any]]) -> Self:
+        if isinstance(config, str) or isinstance(config, Path):
+            with open(config, 'r') as f:
+                config = json.load(f)
+
+        return LivingLabEnv(**config)
 
     @property
     def observation_names(self) -> List[str]:
