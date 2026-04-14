@@ -89,10 +89,30 @@ class LivingLabEnv(gym.Env, Environment):
         self.reward_fn = ComfortRewardFuction()
 
     @staticmethod
-    def from_json(config: Union[str, Path, Mapping[str, Any]]) -> Self:
+    def from_json(config: Union[str, Path, Mapping[str, Any]], update: Optional[Mapping[str, Any]]=None) -> Self:
+        """
+        Load an instance of `LivingLabEnv` from a json configuration file.
+
+        Parameters
+        ----------
+        :param config: Either the path to the configuration file or the configurations as mapping.
+        :type config: Union[str, Path, Mapping[str, Any]]
+        :param update: Configurations to update with different values (defaulte is `None`).
+        :type update: Optional[Mapping[str, Any]]
+
+        Returns
+        ----------
+        :return: the corresponding instance.
+        :rtype: LivingLabEnv
+        """
+        # Load configuration file
         if isinstance(config, str) or isinstance(config, Path):
             with open(config, 'r') as f:
                 config = json.load(f)
+
+        # Update configurations
+        if update is not None:
+            config.update(**update)
 
         return LivingLabEnv(**config)
 
