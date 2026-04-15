@@ -18,7 +18,8 @@ def info():
 
     print(f'##### LIVINGLAB ENV #####')
     print(f'#Episodes: {env.simulation_episodes} (length={env.episode_length})\n')
-    print(f'Observation names:\n{env.observation_names}\n')
+    print(f'Observation names:\n- Active: {env.active_observations}\n- Inactive: {env.inactive_observations}\n')
+    print(f'Periodic Observation Metadata:\n{env.periodic_observations_metadata}\n')
     print(f'Observation space:\n{env.observation_space}\n')
     print(f'Action names:\n{env.action_names}\n')
     print(f'Action space:\n{env.action_space}')
