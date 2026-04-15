@@ -12,7 +12,7 @@ register(
         },
         'seed': 42,
         'start_time_step': 0,
-        'start_time_step': 719,
+        'end_time_step': 719,
         'heat_pump_cfgs': {
             'nominal_power': 4.12,
             'efficiency': 0.25,
