@@ -8,6 +8,77 @@
     },
     "start_time_step": 0,
     "end_time_step": 719,
+    "observations_metadata": {
+        "hour": {
+            "active": true,
+            "periodic_metadata": {
+                "min": 1,
+                "max": 24
+            }
+        },
+        "day_type": {
+            "active": true,
+            "periodic_metadata": {
+                "min": 1,
+                "max": 7
+            }
+        },
+        "month": {
+            "active": true,
+            "periodic_metadata": {
+                "min": 1,
+                "max": 12
+            }
+        },
+        "indoor_dry_bulb_temperature": {
+            "active": true
+        },
+        "indoor_relative_humidity": {
+            "active": true
+        },
+        "occupant_count": {
+            "active": true
+        },
+        "indoor_dry_bulb_temperature_cooling_set_point": {
+            "active": true
+        },
+        "comfort_band": {
+            "active": true
+        },
+        "cooling_demand": {
+            "active": true
+        },
+        "non_shiftable_load": {
+            "active": true
+        },
+        "solar_generation": {
+            "active": true
+        },
+        "outdoor_dry_bulb_temperature": {
+            "active": true
+        },
+        "outdoor_relative_humidity": {
+            "active": true
+        },
+        "diffuse_solar_irradiance": {
+            "active": true
+        },
+        "direct_solar_irradiance": {
+            "active": true
+        },
+        "electricity_pricing": {
+            "active": true
+        },
+        "carbon_intensity": {
+            "active": true
+        },
+        "thermal_battery_soc": {
+            "active": true
+        },
+        "net_electricity_consumption": {
+            "active": true
+        }
+    },
     "heat_pump_cfgs": {
         "nominal_power": 4.12,
         "efficiency": 0.25,
