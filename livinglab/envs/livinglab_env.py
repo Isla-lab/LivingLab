@@ -4,8 +4,10 @@ import gymnasium as gym
 from gymnasium import spaces
 
 import os
+import json
 from pathlib import Path
-from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, List, Mapping
+from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, Set, List, Mapping
+from typing_extensions import Self
 
 from livinglab.base import Environment
 from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
@@ -20,8 +22,10 @@ class LivingLabEnv(gym.Env, Environment):
     ----------
     :param seed: Experiment seed for reproducibility.
     :type seed: Optional[int]
-    :param path: Path to the directory containing simulation data.
-    :type path: Union[str, Path]
+    :param base_path: Path to the directory containing simulation data and building dynamics (if not specified).
+    :type base_path: Union[str, Path]
+    :param sim_data_paths: Paths to the simulation data files relative to `base_path`.
+    :type sim_data_paths: Mapping[str, str]
     :start_time_step: Simulation start time step.
     :type start_time_step: int
     :end_time_step: Simulation end time step.
@@ -42,8 +46,8 @@ class LivingLabEnv(gym.Env, Environment):
     
     def __init__(
             self,
-            seed: Optional[int], 
-            path: Union[str, Path],
+            seed: Optional[int],
+            sim_data_paths: Mapping[str, str],
             start_time_step: int,
             end_time_step: int,
             heat_pump_cfgs: Mapping[str, Any],
@@ -51,18 +55,27 @@ class LivingLabEnv(gym.Env, Environment):
             pv_system_cfgs: Mapping[str, Any],
             dynamics_cfgs: Mapping[str, Any],
             periodic_normalization: bool,
+            base_path: Union[str, Path] = '../data',
+            active_observations: Optional[Iterable[str]]=[],
+            inactive_observations: Optional[Iterable[str]]=[],
+            periodic_observations_metadata: Optional[Mapping[str, Iterable[Union[int, float]]]]=None,
             episode_length: Optional[int]=None,
         ):
         super().__init__(seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
 
+        # Simulation data
+        self.energy_simulation = EnergySimulation(path=os.path.join(base_path, sim_data_paths['energy_simulation'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.weather = Weather(path=os.path.join(base_path, sim_data_paths['weather'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.pricing = Pricing(path=os.path.join(base_path, sim_data_paths['pricing'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.carbon_intensity = CarbonEmissions(path=os.path.join(base_path, sim_data_paths['carbon_intensity'].lstrip('/')), start_time_step=start_time_step, end_time_step=end_time_step)
+
         # Options
         self.periodic_normalization = periodic_normalization
-
-        # Simulation data
-        self.energy_simulation = EnergySimulation(path=os.path.join(path, 'Building_1.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
-        self.weather = Weather(path=os.path.join(path, 'weather.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
-        self.pricing = Pricing(path=os.path.join(path, 'pricing.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
-        self.carbon_intensity = CarbonEmissions(path=os.path.join(path, 'carbon_intensity.csv'), start_time_step=start_time_step, end_time_step=end_time_step)
+        self.periodic_observations_metadata = periodic_observations_metadata
+        self.active_observations = set(active_observations)
+        self.inactive_observations = set(inactive_observations)
+        assert len(self.active_observations.intersection(inactive_observations)) == 0, \
+            f'Found matching keys in both active and inactive observations: {self.active_observations.intersection(inactive_observations)}'
 
         # Devices
         self.heat_pump = HeatPump(**heat_pump_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
@@ -70,28 +83,72 @@ class LivingLabEnv(gym.Env, Environment):
         self.pv_system = PVSystem(**pv_system_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
 
         # Dynamics
+        dynamics_path = dynamics_cfgs.get('path', None)
+        if dynamics_path is not None:
+            dynamics_cfgs['path'] = os.path.join(base_path, dynamics_path.lstrip('/'))           
         self.dynamics = LSTMDynamics(**dynamics_cfgs)
 
         # Observation/action spaces
-        self.periodic_observations_metadata = {'hour': range(1, 25), 'day_type': range(1, 8), 'month': range(1, 13)}
         self.observation_space = self.estimate_observation_space(periodic_normalization=periodic_normalization)
         self.action_space = self.estimate_action_space()
 
         # Reward Function
         self.reward_fn = ComfortRewardFuction()
 
-    @property
-    def observation_names(self) -> List[str]:
-        """Names of all observations that can be returned by the environment."""
-        sim_data_names = self.energy_simulation.observation_names + self.weather.observation_names + self.pricing.observation_names + self.carbon_intensity.observation_names                
-        device_obs_names = ['thermal_battery_soc', 'cooling_demand', 'net_electricity_consumption']
+    @staticmethod
+    def from_json(config: Union[str, Path, Mapping[str, Any]], update: Optional[Mapping[str, Any]]=None, init: bool=True) -> Union[Self, Mapping[str, Any]]:
+        """
+        Load either an instance of `LivingLabEnv` or the initialization `kwargs` from a json configuration file.
 
-        return sim_data_names + device_obs_names
-    
-    @property
-    def periodic_observations_metadata(self) -> Mapping[str, Any]:
-        """Temporal periodic information observations."""
-        return self._periodic_observations_metadata
+        Parameters
+        ----------
+        :param config: Either the path to the configuration file or the configurations as mapping.
+        :type config: Union[str, Path, Mapping[str, Any]]
+        :param update: Configurations to update with different values (defaulte is `None`).
+        :type update: Optional[Mapping[str, Any]]
+        :param init: Whether to returned an initialized environment.
+        :type init: bool
+
+        Returns
+        ----------
+        :return: the corresponding environment instance or the initialization `kwargs`.
+        :rtype: Union[LivingLabEnv, Mapping[str, Any]]
+        """
+        kwargs = {}
+
+        # Load configuration file
+        if isinstance(config, str) or isinstance(config, Path):
+            with open(config, 'r') as f:
+                config = json.load(f)
+
+        # Update configurations
+        if update is not None:
+            config.update(**update)
+
+        # Manage observations
+        observations_metadata = config.pop('observations_metadata', {})
+        for obs, data in observations_metadata.items():
+            if data['active']:
+                temp = kwargs.get('active_observations', [])
+                kwargs.update({'active_observations': temp+[obs]})
+            else:
+                temp = kwargs.get('inactive_observations', [])
+                kwargs.update({'inactive_observations': temp+[obs]})
+
+            periodic_info = data.get('periodic_metadata', None)
+            if periodic_info is not None:
+                min_, max_ = periodic_info['min'], periodic_info['max']
+                temp = kwargs.get('periodic_observations_metadata', {})
+                temp[obs] = range(min_, max_+1)
+                kwargs.update({'periodic_observations_metadata': temp})
+
+        # ASSUMPTION: the rest of the configuration matches the class interface
+        kwargs.update(**config)
+
+        if init:
+            return LivingLabEnv(**kwargs)
+        else:
+            return kwargs
     
     @property
     def terminated(self) -> bool:
@@ -159,6 +216,29 @@ class LivingLabEnv(gym.Env, Environment):
             }
 
         return _info
+    
+    @property
+    def observation_names(self) -> List[str]:
+        """Names of all observations that can be returned by the environment."""
+        sim_data_names = self.energy_simulation.observation_names + self.weather.observation_names + self.pricing.observation_names + self.carbon_intensity.observation_names                
+        device_obs_names = ['thermal_battery_soc', 'net_electricity_consumption']
+
+        return sim_data_names + device_obs_names
+    
+    @property
+    def periodic_observations_metadata(self) -> Mapping[str, Any]:
+        """Temporal periodic information observations."""
+        return self._periodic_observations_metadata
+    
+    @property
+    def active_observations(self) -> Set[str]:
+        """Set of observations actively returned by the environment."""
+        return self._active_observations
+    
+    @property
+    def inactive_observations(self) -> Set[str]:
+        """Set of observations hidden by the environment, but still used from the environment."""
+        return self._inactive_observations
 
     @property
     def observation_space(self) -> spaces.Box:
@@ -207,8 +287,30 @@ class LivingLabEnv(gym.Env, Environment):
         return self.dynamics._model_input[0][0] is not None
 
     @periodic_observations_metadata.setter
-    def periodic_observations_metadata(self, new_metadata: Mapping[str, Iterable[Union[int, float]]]):
+    def periodic_observations_metadata(self, new_metadata: Mapping[str, Optional[Iterable[Union[int, float]]]]):
+        if new_metadata is None:
+            new_metadata = {'hour': range(1, 25), 'month': range(1, 13), 'day_type': range(1, 8)}
         self._periodic_observations_metadata = dict(**new_metadata)
+
+    @active_observations.setter
+    def active_observations(self, new_obs: Optional[Iterable[str]]):
+        if new_obs is None or len(new_obs) == 0:
+            new_obs = self.observation_names
+
+        # Soundness check
+        invalid = [name for name in new_obs if name not in self.observation_names]
+        assert len(invalid) == 0, f'Trying to set invalid active observations: {invalid}'
+        self._active_observations = set(new_obs)
+
+    @inactive_observations.setter
+    def inactive_observations(self, new_obs: Optional[Iterable[str]]):
+        if new_obs is None or len(new_obs) == 0:
+            new_obs = set(self.observation_names).difference(self.active_observations)
+
+        # Soundness check
+        invalid = [name for name in new_obs if name not in self.observation_names]
+        assert len(invalid) == 0, f'Trying to set invalid inactive observations: {invalid}'
+        self._inactive_observations = set(new_obs)
     
     @observation_space.setter
     def observation_space(self, new_space: spaces.Box):
@@ -303,7 +405,7 @@ class LivingLabEnv(gym.Env, Environment):
         self._net_electricity_consumption_emissions[self.episode_time_step] = net_electricity_consumption * self.carbon_intensity.carbon_intensity[self.time_step]
 
         # Compute reward
-        reward_obs = self.observations(past=False, names=True)
+        reward_obs = self.observations(include_all=True, past=False, names=True)
         reward = self.reward_fn.calculate(observations=reward_obs)
         self._episode_rewards[self.episode_time_step] = reward
 
@@ -312,7 +414,7 @@ class LivingLabEnv(gym.Env, Environment):
 
         return self.observations(), reward, self.terminated, self.truncated, self.info
 
-    def observations(self, periodic_normalization: Optional[bool]=None, past: bool=True, names: bool=False) -> Union[np.ndarray, Mapping[str, int|float]]:
+    def observations(self, include_all: bool=False, periodic_normalization: Optional[bool]=None, past: bool=True, names: bool=False) -> Union[np.ndarray, Mapping[str, int|float]]:
         """
         Return observations at the current `self.time_step`.
 
@@ -340,15 +442,17 @@ class LivingLabEnv(gym.Env, Environment):
             pn = PeriodicNormalization(x_max=0)
             periodic_observations = self.periodic_observations_metadata
             for k, v in data.items():
-                if k in periodic_observations:
-                    pn.x_max = max(periodic_observations[k])
-                    sin_x, cos_x = (pn * v).astype(dtype=np.float32)
-                    observations[f'{k}_sin'] = sin_x
-                    observations[f'{k}_cos'] = cos_x
-                else:
-                    observations[k] = v
+                if include_all or k in self._active_observations: # <- Filter active observations
+                    if k in periodic_observations:
+                        pn.x_max = max(periodic_observations[k])
+                        sin_x, cos_x = (pn * v).astype(dtype=np.float32)
+                        observations[f'{k}_sin'] = sin_x
+                        observations[f'{k}_cos'] = cos_x
+                    else:
+                        observations[k] = v
         else:
-            observations = dict(**data)
+            # FIlter active observations
+            observations = dict(**data) if include_all else {k: v for k, v in data.items() if k in self._active_observations}
 
         # Return dictionary with observation names
         if names:
@@ -447,7 +551,7 @@ class LivingLabEnv(gym.Env, Environment):
 
         # Estimate space limits
         low, high = {}, {}
-        for key in self.observation_names:
+        for key in self.active_observations:
             if key == 'solar_generation':
                 low[key] = self.pv_system.get_generation(inverter_ac_power_per_kw=sim_data['solar_generation'].min())
                 high[key] = self.pv_system.get_generation(inverter_ac_power_per_kw=sim_data['solar_generation'].max())
@@ -633,7 +737,7 @@ class LivingLabEnv(gym.Env, Environment):
     
     def _update_dynamics_input(self, sanity_check: bool=True):
         # Get current observations
-        obs = self.observations(past=False, names=True)
+        obs = self.observations(include_all=True, past=False, names=True)
         if sanity_check:
             missing = [name for name in self.dynamics.input_observation_names if name not in obs.keys()]
             assert len(missing) == 0, f'Missing observations required by the dynamics: {missing}.'

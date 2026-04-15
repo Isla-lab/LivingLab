@@ -4,9 +4,15 @@ register(
     id='LivingLab-v0',
     entry_point='livinglab.envs:LivingLabEnv',
     kwargs={
+        'sim_data_paths': {
+            'energy_simulation': "datasets/citylearn_challenge_2023_phase_1/Building_1.csv",
+            'weather': "datasets/citylearn_challenge_2023_phase_1/weather.csv",
+            'pricing': "datasets/citylearn_challenge_2023_phase_1/pricing.csv",
+            'carbon_intensity': "datasets/citylearn_challenge_2023_phase_1/carbon_intensity.csv"
+        },
         'seed': 42,
         'start_time_step': 0,
-        'start_time_step': 719,
+        'end_time_step': 719,
         'heat_pump_cfgs': {
             'nominal_power': 4.12,
             'efficiency': 0.25,
@@ -22,7 +28,7 @@ register(
             'nominal_power': 2.4
         },
         'dynamics_cfgs': {
-            'path': '../data/datasets/citylearn_challenge_2023_phase_1/Building_1.pth',
+            'path': 'datasets/citylearn_challenge_2023_phase_1/Building_1.pth',
             'num_layers': 2,
             'input_size': 13,
             'hidden_size': 16,

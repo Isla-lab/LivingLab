@@ -14,6 +14,7 @@ LivingLab follows the modern [Farama Gymnasium API](https://gymnasium.farama.org
 ### 1.2 📂 Project Structure
 ```bash
 LivingLab/
+├── config/                     # Default JSON configuration files
 ├── data/                       # Time-series datasets (weather, pricing, loads)
 ├── livinglab/                  # Main environment package
 │   ├── __init__.py             # Registers the Gym environments
@@ -25,7 +26,7 @@ LivingLab/
 │   │   ├── battery.py          # Energy Storage System dynamics
 │   │   └── dynamics.py         # Building temperature dynamics
 │   └── utils/
-│       ├── data_loader.py      # CSV parsing and episode handling
+│       ├── data_loader.py      # CSV parsing
 │       ├── preprocessing.py    # Preprocessing functions for data normalzation
 │       └── rewards.py          # Modular reward calculation
 └── examples/                   # Example scripts and agent implementations
@@ -78,16 +79,37 @@ python init_env.py
 ```
 
 ### 2.1 🏗️ Customizing the Environment
-You can easily override the default environment settings by passing keyword arguments directly to `gym_make()`. Thi allows for rapid testing on custom configurations without altering the core code.
+You can easily override the default environment settings by passing keyword arguments directly to `gym_make()`. This allows for rapid testing on custom configurations without altering the core code:
 ```python
 env = gym.make(
     "LivingLab-v0", 
-    episode_length=24 # <- daily episodes instead of the full dataset
+    kawrgs={
+        "episode_length": 24 # <- daily episodes instead of the full dataset
+    }
 )
+```
+
+Alternatively, you can check `config/default.json` out to understand how to define JSON configuration files for custom environment initializaton. Once you defined your configuration file, you can override the default environment settings:
+```python
+import livinglab
+import gymnasium as gym
+from livinglab.envs import LivingLabEnv
+
+# 1. Your JSON config file
+path = "<path_to_your_JSON_configs>"
+
+# 2a. You can use `gym_make()`
+kwargs = LivingLab.from_json(config=path, init=False)
+env = gym.make(
+    "LivingLab-v0", 
+    kawrgs=kwargs
+)
+
+# 2b. Or you can retrieve an environment instance
+env = LivingLab.from_json(config=path, init=True)
 ```
 
 ## 3. 🔧 Future Work
 The environment will be continuously updated with future work covering:
-* easier custom environment definition and loading via `.json` configuration files;
 * out-of-the-box compatibility with [Omnisafe](https://github.com/PKU-Alignment/omnisafe) for Safe RL;
 * improved devices and building dynamics modelling. 
