@@ -96,9 +96,9 @@ class LivingLabEnv(gym.Env, Environment):
         self.reward_fn = ComfortRewardFuction()
 
     @staticmethod
-    def from_json(config: Union[str, Path, Mapping[str, Any]], update: Optional[Mapping[str, Any]]=None) -> Self:
+    def from_json(config: Union[str, Path, Mapping[str, Any]], update: Optional[Mapping[str, Any]]=None, init: bool=True) -> Union[Self, Mapping[str, Any]]:
         """
-        Load an instance of `LivingLabEnv` from a json configuration file.
+        Load either an instance of `LivingLabEnv` or the initialization `kwargs` from a json configuration file.
 
         Parameters
         ----------
@@ -106,11 +106,13 @@ class LivingLabEnv(gym.Env, Environment):
         :type config: Union[str, Path, Mapping[str, Any]]
         :param update: Configurations to update with different values (defaulte is `None`).
         :type update: Optional[Mapping[str, Any]]
+        :param init: Whether to returned an initialized environment.
+        :type init: bool
 
         Returns
         ----------
-        :return: the corresponding instance.
-        :rtype: LivingLabEnv
+        :return: the corresponding environment instance or the initialization `kwargs`.
+        :rtype: Union[LivingLabEnv, Mapping[str, Any]]
         """
         kwargs = {}
 
@@ -143,7 +145,10 @@ class LivingLabEnv(gym.Env, Environment):
         # ASSUMPTION: the rest of the configuration matches the class interface
         kwargs.update(**config)
 
-        return LivingLabEnv(**kwargs)
+        if init:
+            return LivingLabEnv(**kwargs)
+        else:
+            return kwargs
     
     @property
     def terminated(self) -> bool:
