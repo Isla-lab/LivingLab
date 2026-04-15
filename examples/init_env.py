@@ -7,7 +7,7 @@ from livinglab.envs import LivingLabEnv
 
 
 def init_env() -> LivingLabEnv:
-    with open('../config/citylearn_challenge_2023_phase_1.json') as f:
+    with open('../config/default.json') as f:
         config = json.load(f)
         
     return LivingLabEnv.from_json(config=config, update={'episode_length': 24})
