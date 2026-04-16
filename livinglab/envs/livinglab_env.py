@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, Set, List, Mapping
 from typing_extensions import Self
 
-from livinglab.base import Environment
+from livinglab.base import Environment, Device
+from livinglab.components.dynamics import Dynamics
 from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
 from livinglab.utils import EnergySimulation, Weather, Pricing, CarbonEmissions, PeriodicNormalization, ComfortRewardFuction
 
@@ -32,13 +33,13 @@ class LivingLabEnv(gym.Env, Environment):
     :type end_time_step: int
     :param episode_length: Episode duration in time steps.
     :type episode_length: int
-    :param heat_pump_cfgs: Heat Pump configurations.
+    :param heat_pump_cfgs: Heat Pump object or configurations.
     :type heat_pump_cfgs: Mapping[str, Any]
-    :param thermal_battery_cfgs: Thermal Battery configurations.
+    :param thermal_battery_cfgs: Thermal Battery object or configurations.
     :type thermal_battery_cfgs: Mapping[str, Any]
-    :param pv_system_cfgs: PV System configurations.
+    :param pv_system_cfgs: PV System object or configurations.
     :type pv_system_cfgs: Mapping[str, Any]
-    :param dynamics_cfgs: Environment dynamics configurations.
+    :param dynamics_cfgs: Environment dynamics object or configurations.
     :type dynamics_cfgs: Mapping[str, Any]
     :param periodic_normalization: Whether to normalize periodic temporal observations.
     :type periodic_normalization: bool
@@ -50,10 +51,10 @@ class LivingLabEnv(gym.Env, Environment):
             sim_data_paths: Mapping[str, str],
             start_time_step: int,
             end_time_step: int,
-            heat_pump_cfgs: Mapping[str, Any],
-            thermal_battery_cfgs: Mapping[str, Any],
-            pv_system_cfgs: Mapping[str, Any],
-            dynamics_cfgs: Mapping[str, Any],
+            heat_pump_cfgs: Union[HeatPump, Mapping[str, Any]],
+            thermal_battery_cfgs: Union[ThermalBattery, Mapping[str, Any]],
+            pv_system_cfgs: Union[PVSystem, Mapping[str, Any]],
+            dynamics_cfgs: Union[Dynamics, Mapping[str, Any]],
             periodic_normalization: bool,
             base_path: Union[str, Path] = '../data',
             active_observations: Optional[Iterable[str]]=[],
@@ -78,15 +79,18 @@ class LivingLabEnv(gym.Env, Environment):
             f'Found matching keys in both active and inactive observations: {self.active_observations.intersection(inactive_observations)}'
 
         # Devices
-        self.heat_pump = HeatPump(**heat_pump_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
-        self.thermal_battery = ThermalBattery(**thermal_battery_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
-        self.pv_system = PVSystem(**pv_system_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
+        self.heat_pump: HeatPump = self.load_device(device=heat_pump_cfgs, device_class=HeatPump)
+        self.thermal_battery: ThermalBattery = self.load_device(device=thermal_battery_cfgs, device_class=ThermalBattery)
+        self.pv_system: PVSystem = self.load_device(device=pv_system_cfgs, device_class=PVSystem)
 
         # Dynamics
-        dynamics_path = dynamics_cfgs.get('path', None)
-        if dynamics_path is not None:
-            dynamics_cfgs['path'] = os.path.join(base_path, dynamics_path.lstrip('/'))           
-        self.dynamics = LSTMDynamics(**dynamics_cfgs)
+        if isinstance(dynamics_cfgs, LSTMDynamics):
+            self.dynamics = dynamics_cfgs
+        else:
+            dynamics_path = dynamics_cfgs.get('path', None)
+            if dynamics_path is not None:
+                dynamics_cfgs['path'] = os.path.join(base_path, dynamics_path.lstrip('/'))           
+            self.dynamics = LSTMDynamics(**dynamics_cfgs)
 
         # Observation/action spaces
         self.observation_space = self.estimate_observation_space(periodic_normalization=periodic_normalization)
@@ -166,10 +170,10 @@ class LivingLabEnv(gym.Env, Environment):
         _info = {}
         if self.terminated:
             _info['reward'] = {
-                'min': self._episode_rewards.min(),
-                'max': self._episode_rewards.max(),
-                'sum': self._episode_rewards.sum(),
-                'mean': self._episode_rewards.mean(),
+                'min': self.episode_rewards.min(),
+                'max': self.episode_rewards.max(),
+                'sum': self.episode_rewards.sum(),
+                'mean': self.episode_rewards.mean(),
             }
 
             # Devices' electricity consumption information
@@ -195,24 +199,24 @@ class LivingLabEnv(gym.Env, Environment):
 
             # Total electricity consumption information
             _info['net_electricity_consumption'] = {
-                'min': self._net_electricity_consumption.min(),
-                'max': self._net_electricity_consumption.max(),
-                'sum': self._net_electricity_consumption.sum(),
-                'mean': self._net_electricity_consumption.mean(),
+                'min': self.net_electricity_consumption.min(),
+                'max': self.net_electricity_consumption.max(),
+                'sum': self.net_electricity_consumption.sum(),
+                'mean': self.net_electricity_consumption.mean(),
             }
 
             _info['net_electricity_consumption_cost'] = {
-                'min': self._net_electricity_consumption_cost.min(),
-                'max': self._net_electricity_consumption_cost.max(),
-                'sum': self._net_electricity_consumption_cost.sum(),
-                'mean': self._net_electricity_consumption_cost.mean(),
+                'min': self.net_electricity_consumption_cost.min(),
+                'max': self.net_electricity_consumption_cost.max(),
+                'sum': self.net_electricity_consumption_cost.sum(),
+                'mean': self.net_electricity_consumption_cost.mean(),
             }
 
             _info['net_electricity_consumption_emissions'] = {
-                'min': self._net_electricity_consumption_emissions.min(),
-                'max': self._net_electricity_consumption_emissions.max(),
-                'sum': self._net_electricity_consumption_emissions.sum(),
-                'mean': self._net_electricity_consumption_emissions.mean(),
+                'min': self.net_electricity_consumption_emissions.min(),
+                'max': self.net_electricity_consumption_emissions.max(),
+                'sum': self.net_electricity_consumption_emissions.sum(),
+                'mean': self.net_electricity_consumption_emissions.mean(),
             }
 
         return _info
@@ -262,22 +266,22 @@ class LivingLabEnv(gym.Env, Environment):
         return self._action_space
     
     @property
-    def episode_rewards(self) -> List[float]:
+    def episode_rewards(self) -> np.ndarray:
         """List of rewards achieved within an episode."""
         return self._episode_rewards
     
     @property
-    def net_electricity_consumption(self) -> List[float]:
+    def net_electricity_consumption(self) -> np.ndarray:
         """Total electricity imported from the grid at each `episode_time_step` [kWh]."""
         return self._net_electricity_consumption
     
     @property
-    def net_electricity_consumption_cost(self) -> List[float]:
+    def net_electricity_consumption_cost(self) -> np.ndarray:
         """Cost of the electricity imported from the grid at each `episode_time_step` [$*kWh]."""
         return self._net_electricity_consumption_cost
     
     @property
-    def net_electricity_consumption_emissions(self) -> List[float]:
+    def net_electricity_consumption_emissions(self) -> np.ndarray:
         """Emissions of the electricity imported from the grid at each `episode_time_step` [kgCO2*kWh]."""
         return self._net_electricity_consumption_emissions
     
@@ -413,10 +417,42 @@ class LivingLabEnv(gym.Env, Environment):
         self._next_time_step()
 
         return self.observations(), reward, self.terminated, self.truncated, self.info
+    
+    def load_device(self, device: Union[Device, Mapping[str, Any]], device_class: Callable) -> Device:
+        """
+        Load a simulation-ready device.
+
+        Parameters
+        ----------
+        :param device: The device object or its configurations.
+        :type device: Union[Device, Mapping[str, Any]]
+        :param device_class: Class of the device to load.
+        :type device_class: Callable
+
+        Returns
+        ----------
+        :return: the simulation-ready device.
+        :rtype: Device
+        """
+        if isinstance(device, device_class):
+            device.start_time_step = self.start_time_step
+            device.end_time_step = self.end_time_step
+            device.episode_length = self.episode_length
+        else:
+            device_cfgs = device
+            device_cfgs.update({
+                'seed': self.seed,
+                'start_time_step': self.start_time_step,
+                'end_time_step': self.end_time_step,
+                'episode_length': self.episode_length,
+            })
+            device = device_class(**device_cfgs)
+
+        return device
 
     def observations(self, include_all: bool=False, periodic_normalization: Optional[bool]=None, past: bool=True, names: bool=False) -> Union[np.ndarray, Mapping[str, int|float]]:
         """
-        Return observations at the current `self.time_step`.
+        Return observations at the current `self.episode_time_step`.
 
         Parameters
         ----------
