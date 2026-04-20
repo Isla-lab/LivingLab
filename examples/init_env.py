@@ -3,8 +3,9 @@ import os
 import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from livinglab.envs import LivingLabEnv
-from livinglab.components import HeatPump, ThermalBattery, PVSystem
+from livinglab.envs.livinglab_env import LivingLabEnv
+from livinglab.components.device import HeatPump, PVSystem
+from livinglab.components.battery import ThermalBattery
 
 
 def init_env_manual() -> LivingLabEnv:
@@ -62,12 +63,8 @@ def info():
     obs = env.observations(periodic_normalization=False, names=True)
     print(f'\nObservation at time step {env.time_step}:\n{obs}')
 
-    actions = [0.0, 0.0]
-    _, reward, terminated, _, info = env.step(actions=actions)
-    print(f'\nAction {actions} result:\n - {env.reward_fn.__class__.__name__}: {reward}\n - Terminated: {terminated}\n - Info: {info}')
-
-    next_obs = env.observations(periodic_normalization=False, names=True)
-    print(f'\nObservation at time step {env.time_step}:\n{next_obs}')
+    norm_obs = env.observations(normalize=True, periodic_normalization=True, names=True)
+    print(f'\nNormalized Observation at time step {env.time_step}:\n{norm_obs}')
 
     env.close()
 
