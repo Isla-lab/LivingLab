@@ -10,9 +10,12 @@ from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, Set
 from typing_extensions import Self
 
 from livinglab.base import Environment, Device
-from livinglab.components.dynamics import Dynamics
-from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
-from livinglab.utils import EnergySimulation, Weather, Pricing, CarbonEmissions, Normalize, PeriodicNormalization, ComfortRewardFuction
+from livinglab.components.dynamics import Dynamics, LSTMDynamics
+from livinglab.components.device import HeatPump, PVSystem
+from livinglab.components.battery import ThermalBattery
+from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
+from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
+from livinglab.utils.rewards import ComfortRewardFuction
 
 
 class LivingLabEnv(gym.Env, Environment):
@@ -293,7 +296,7 @@ class LivingLabEnv(gym.Env, Environment):
     def action_space(self, new_space: spaces.Box):
         self._action_space = new_space
 
-    def reset(self, seed: int=None, options: Mapping[str, Any]={}) -> Tuple[np.ndarray, Mapping[str, Any]]:
+    def reset(self, seed: int=None, options: Optional[Mapping[str, Any]]=None) -> Tuple[np.ndarray, Mapping[str, Any]]:
         """
         Reset `LivingLabEnv` to its initial state.
 
@@ -311,6 +314,10 @@ class LivingLabEnv(gym.Env, Environment):
         """
         gym.Env.reset(self)
         Environment.reset(self)
+
+        # Check options
+        if options is None:
+            options = {}
 
         # Update seed
         if seed is not None:
