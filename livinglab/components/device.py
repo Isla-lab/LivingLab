@@ -119,7 +119,7 @@ class HeatPump(ElectricDevice):
         """
         # Convert temperature from Celcius fo Kelvin
         c_to_k = lambda x: x + 273.15
-        outdoor_dry_bulb_temperature = np.array(outdoor_dry_bulb_temperature)
+        outdoor_dry_bulb_temperature = np.array(outdoor_dry_bulb_temperature, dtype=np.float32)
 
         # Calculate CoP
         if self._mode == 'heating':
@@ -127,7 +127,7 @@ class HeatPump(ElectricDevice):
         else:
             cop = self.efficiency*c_to_k(self._target_temperature)/(outdoor_dry_bulb_temperature - self._target_temperature)
         
-        cop = np.array(cop)
+        cop = np.array(cop, dtype=np.float32)
         cop[cop < 0] = 20
         cop[cop > 20] = 20
         return cop
@@ -152,9 +152,11 @@ class HeatPump(ElectricDevice):
         cop = self.get_cop(outdoor_dry_bulb_temperature)
 
         if max_electric_power is None: 
-            return self.available_nominal_power*cop  
+            max_out_power = self.available_nominal_power*cop  
         else:
-            return np.min([max_electric_power, self.available_nominal_power], axis=0)*cop
+            max_out_power = np.min([max_electric_power, self.available_nominal_power], axis=0)*cop
+
+        return max_out_power.astype(np.float32)
 
     def get_input_power(self, output_power: float, outdoor_dry_bulb_temperature: float) -> float:
         """
