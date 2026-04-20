@@ -94,7 +94,6 @@ def parse_arguments():
     parser.add_argument('--config_path', type=str, default='../config/default.json', help="Path to JSON configuration file")
 
     # RL configs
-    parser.add_argument('--algo', type=str, default='PPO', help='RL algorithm')
     parser.add_argument('--seed', type=int, default=1, help="Experiment seed")
     parser.add_argument('--episodes', type=int, default=1000, help="Training episodes")
     parser.add_argument('--episode_length', type=int, nargs='?', help="Length of an episode in time steps")
@@ -119,27 +118,25 @@ def main(args):
             project=args.project,
             entity=args.entity,
             group='sb3',
-            name=f"{args.algo}_SB3_seed{args.seed}_{datetime.now().strftime('%d-%m-%y_%H:%M:%S')}",
-            tags=[args.algo, str(args.seed)]
+            name=f"PPO_SB3_seed{args.seed}_{datetime.now().strftime('%d-%m-%y_%H:%M:%S')}"
         )
 
     # 3. Initialize SB3 agent
-    if args.algo == 'PPO':
-        agent = PPO(
-            policy='MlpPolicy', 
-            env=env,
-            n_steps=env.unwrapped.episode_length,
-            batch_size=64,      #
-            n_epochs=40,        #
-            gamma=0.99,         #
-            gae_lambda=0.95,    #
-            clip_range=0.2,     # -> from omnisafe/omnisafe/configs/on-policy/PPO.yaml
-            ent_coef=0.0,       #
-            vf_coef=0.001,      #
-            max_grad_norm=40.0, #
-            target_kl=0.02,     #
-            seed=args.seed
-        )
+    agent = PPO(
+        policy='MlpPolicy', 
+        env=env,
+        n_steps=env.unwrapped.episode_length,
+        batch_size=64,      #
+        n_epochs=40,        #
+        gamma=0.99,         #
+        gae_lambda=0.95,    #
+        clip_range=0.2,     # -> from omnisafe/omnisafe/configs/on-policy/PPO.yaml
+        ent_coef=0.0,       #
+        vf_coef=0.001,      #
+        max_grad_norm=40.0, #
+        target_kl=0.02,     #
+        seed=args.seed
+    )
 
     # 4. Train the agent
     _ = agent.learn(
