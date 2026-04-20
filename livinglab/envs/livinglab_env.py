@@ -132,6 +132,11 @@ class LivingLabEnv(gym.Env, Environment):
         if update is not None:
             config.update(**update)
 
+        # Check episode length
+        episode_length = config.get('episode_length', None)
+        if episode_length is None:
+            config['episode_length'] = (config['end_time_step'] - config['start_time_step']) + 1
+
         # Manage observations
         observations_metadata = config.pop('observations_metadata', {})
         for obs, data in observations_metadata.items():
@@ -146,7 +151,7 @@ class LivingLabEnv(gym.Env, Environment):
             if periodic_info is not None:
                 min_, max_ = periodic_info['min'], periodic_info['max']
                 temp = kwargs.get('periodic_observations_metadata', {})
-                temp[obs] = range(min_, max_+1)
+                temp[obs] = (min_, max_+1)
                 kwargs.update({'periodic_observations_metadata': temp})
 
         # ASSUMPTION: the rest of the configuration matches the class interface
@@ -266,7 +271,10 @@ class LivingLabEnv(gym.Env, Environment):
     def periodic_observations_metadata(self, new_metadata: Mapping[str, Optional[Iterable[Union[int, float]]]]):
         if new_metadata is None:
             new_metadata = {'hour': range(1, 25), 'month': range(1, 13), 'day_type': range(1, 8)}
-        self._periodic_observations_metadata = dict(**new_metadata)
+
+        self._periodic_observations_metadata = {}
+        for k, v in new_metadata.items():
+            self._periodic_observations_metadata[k] = v if isinstance(v, range) else range(min(v), max(v))
 
     @active_observations.setter
     def active_observations(self, new_obs: Optional[Iterable[str]]):
