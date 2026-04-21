@@ -25,8 +25,8 @@ def parse_arguments():
 
     # Wandb logging
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
-    parser.add_argument('--project', type=str, default='LivingLab_RL_training', help="Wandb project")
-    parser.add_argument('--entity', type=str, default='universitaverona', help="Wandb entity")
+    parser.add_argument('--project', type=str, required=True , help="Wandb project")
+    parser.add_argument('--entity', type=str, required=True , help="Wandb entity")
 
     return parser.parse_args()
 
