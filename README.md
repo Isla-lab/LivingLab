@@ -16,6 +16,9 @@ LivingLab follows the modern [Farama Gymnasium API](https://gymnasium.farama.org
 LivingLab/
 ├── config/                     # Default JSON configuration files
 ├── data/                       # Time-series datasets (weather, pricing, loads)
+├── ext/                        # Externally imported libraries
+│   ├── __init__.py             
+│   └── omnisafe/               # Omnisafe library for Safe RL algorithms
 ├── livinglab/                  # Main environment package
 │   ├── __init__.py             # Registers the Gym environments
 │   ├── base.py                 # Base classes definition
@@ -28,6 +31,7 @@ LivingLab/
 │   └── utils/
 │       ├── data_loader.py      # CSV parsing
 │       ├── preprocessing.py    # Preprocessing functions for data normalzation
+│       ├── wrappers.py         # Wrappers for Observation/Action space normalization
 │       └── rewards.py          # Modular reward calculation
 └── examples/                   # Example scripts and agent implementations
     └── init_env.py             # Random agent quickstart
@@ -40,11 +44,24 @@ We recommend using a [Miniconda](https://www.anaconda.com/docs/getting-started/m
     ```bash
     git clone https://github.com/Isla-lab/LivingLab.git
     ```
-2. Create the miniconda environment:
+2. Setup [Omnisafe](https://github.com/PKU-Alignment/omnisafe):
     ```bash
-    cd LivingLab
-    conda create -n living-lab --python==3.10.18 -y
-    conda activate living-lab
+    # 1. Create the conda environment
+    cd LivingLab/ext/omnisafe
+    conda env create --file conda-recipe.yaml
+
+    # 2. Install omnisafe
+    conda activate safe-livinglab
+    pip install -e .
+    ```
+3. Update and install additional libraries
+    ```bash
+    # 1. Update torch and torchvision
+    pip install torch==2.8.0 torchvision==0.23.0
+    
+    # 2. Install utilities
+    pip install ipywidgets
+    pip install stable_baselines3==2.0.0
     ```
 
 ## 2. 🚀 Quick Start
@@ -89,11 +106,11 @@ env = gym.make(
 )
 ```
 
-Alternatively, you can check `config/default.json` out to understand how to define JSON configuration files for custom environment initializaton. Once you defined your configuration file, you can override the default environment settings:
+Alternatively, you can check [config/default.json](config/default.json) out to understand how to define JSON configuration files for custom environment initializaton. Once you defined your configuration file, you can override the default environment settings:
 ```python
 import livinglab
 import gymnasium as gym
-from livinglab.envs import LivingLabEnv
+from livinglab.envs.livinglab_env import LivingLabEnv
 
 # 1. Your JSON config file
 path = "<path_to_your_JSON_configs>"
@@ -109,7 +126,44 @@ env = gym.make(
 env = LivingLab.from_json(config=path, init=True)
 ```
 
-## 3. 🔧 Future Work
+## 3. 🤖 Omnisafe Compatability
+In [ext/omnisafe/omnisafe/envs/livinglab_env.py](ext/omnisafe/omnisafe/envs/livinglab_env.py) we implemented a `LivingLabOmnisafe` class that allows agents to train on `LivingLabEnv` via Safe RL algorithms provided by the Omnisafe library.
+
+You can easily instanitate an Omnisafe agent to train on `LivingLabEnv` as follows:
+```python
+from ext import omnisafe
+from livinglab.envs.livinglab_env import LivingLabEnv
+
+# 1. Load env configs from your JSON config file
+path = "<path_to_your_JSON_configs>"
+env_cfgs = LivingLab.from_json(config=path, init=False)
+
+# 2. Define the configurations for the Omnisafe agent
+custom_cfgs = {
+    'seed': ...,
+    'train_cfgs': {
+        # Training configurations (e.g. total training steps)
+    },
+    'algo_cfgs': {
+        'obs_normalize': False, # <- DO NOT SET THIS TO True!
+        # Algorithm specific configurations
+    },
+
+    # --- LIVINGLAB CONFIGURATIONS ---
+    'env_cfgs': env_cfgs
+}
+
+# 3. Define and train the agent
+agent = omnisafe.Agent('<algo>', 'LivingLab-v0', custom_cfgs=custom_cfgs)
+agent.learn()
+```
+
+You can check and run a given example at [examples/train_omnisafe.py](examples/train_omnisafe.py) for training an Omnisafe agent via PPO:
+```bash
+cd examples/
+python train_omnisafe.py
+```
+
+## 4. 🔧 Future Work
 The environment will be continuously updated with future work covering:
-* out-of-the-box compatibility with [Omnisafe](https://github.com/PKU-Alignment/omnisafe) for Safe RL;
 * improved devices and building dynamics modelling. 
