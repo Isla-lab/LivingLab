@@ -3,18 +3,52 @@ import os
 import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from livinglab.envs import LivingLabEnv
+from livinglab.envs.livinglab_env import LivingLabEnv
+from livinglab.components.device import HeatPump, PVSystem
+from livinglab.components.battery import ThermalBattery
 
 
-def init_env() -> LivingLabEnv:
+def init_env_manual() -> LivingLabEnv:
     with open('../config/default.json') as f:
         config = json.load(f)
-        
+
+    # Extract device configurations
+    heat_pump_cfgs = config['heat_pump_cfgs']
+    thermal_battery_cfgs = config['thermal_battery_cfgs']
+    pv_system_cfgs = config['pv_system_cfgs']
+
+    # Initialize devices
+    heat_pump = HeatPump(**heat_pump_cfgs)
+    thermal_battery = ThermalBattery(**thermal_battery_cfgs)
+    pv_system = PVSystem(**pv_system_cfgs)
+
+    # Initialize environment
+    env = LivingLabEnv(
+        seed=config['seed'],
+        sim_data_paths=config['sim_data_paths'],
+        start_time_step=config['start_time_step'],
+        end_time_step=config['end_time_step'],
+        heat_pump_cfgs=heat_pump,
+        thermal_battery_cfgs=thermal_battery,
+        pv_system_cfgs=pv_system,
+        dynamics_cfgs=config['dynamics_cfgs'],
+        periodic_normalization=config['periodic_normalization'],
+        episode_length=24
+    )
+
+    return env
+
+
+def init_env_json() -> LivingLabEnv:
+    with open('../config/default.json') as f:
+        config = json.load(f)
+    
+    # Load environment from JSON configuration file and update some configs
     return LivingLabEnv.from_json(config=config, update={'episode_length': 24})
 
 
 def info():
-    env = init_env()
+    env = init_env_json()
 
     print(f'##### LIVINGLAB ENV #####')
     print(f'#Episodes: {env.simulation_episodes} (length={env.episode_length})\n')
@@ -29,20 +63,16 @@ def info():
     obs = env.observations(periodic_normalization=False, names=True)
     print(f'\nObservation at time step {env.time_step}:\n{obs}')
 
-    actions = [0.0, 0.0]
-    _, reward, terminated, _, info = env.step(actions=actions)
-    print(f'\nAction {actions} result:\n - {env.reward_fn.__class__.__name__}: {reward}\n - Terminated: {terminated}\n - Info: {info}')
-
-    next_obs = env.observations(periodic_normalization=False, names=True)
-    print(f'\nObservation at time step {env.time_step}:\n{next_obs}')
+    norm_obs = env.observations(normalize=True, periodic_normalization=True, names=True)
+    print(f'\nNormalized Observation at time step {env.time_step}:\n{norm_obs}')
 
     env.close()
 
 
 def sanity_check():
-    env = init_env()
+    env = init_env_json()
 
-    n_episodes = 100
+    n_episodes = 1
     for _ in range(n_episodes):
         env.reset()
         while not env.terminated:

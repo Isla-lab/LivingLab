@@ -6,12 +6,16 @@ from gymnasium import spaces
 import os
 import json
 from pathlib import Path
-from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, Set, List, Mapping
+from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, Set, List, Mapping, Dict
 from typing_extensions import Self
 
-from livinglab.base import Environment
-from livinglab.components import HeatPump, PVSystem, ThermalBattery, LSTMDynamics
-from livinglab.utils import EnergySimulation, Weather, Pricing, CarbonEmissions, PeriodicNormalization, ComfortRewardFuction
+from livinglab.base import Environment, Device
+from livinglab.components.dynamics import Dynamics, LSTMDynamics
+from livinglab.components.device import HeatPump, PVSystem
+from livinglab.components.battery import ThermalBattery
+from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
+from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
+from livinglab.utils.rewards import ComfortRewardFuction
 
 
 class LivingLabEnv(gym.Env, Environment):
@@ -32,13 +36,13 @@ class LivingLabEnv(gym.Env, Environment):
     :type end_time_step: int
     :param episode_length: Episode duration in time steps.
     :type episode_length: int
-    :param heat_pump_cfgs: Heat Pump configurations.
+    :param heat_pump_cfgs: Heat Pump object or configurations.
     :type heat_pump_cfgs: Mapping[str, Any]
-    :param thermal_battery_cfgs: Thermal Battery configurations.
+    :param thermal_battery_cfgs: Thermal Battery object or configurations.
     :type thermal_battery_cfgs: Mapping[str, Any]
-    :param pv_system_cfgs: PV System configurations.
+    :param pv_system_cfgs: PV System object or configurations.
     :type pv_system_cfgs: Mapping[str, Any]
-    :param dynamics_cfgs: Environment dynamics configurations.
+    :param dynamics_cfgs: Environment dynamics object or configurations.
     :type dynamics_cfgs: Mapping[str, Any]
     :param periodic_normalization: Whether to normalize periodic temporal observations.
     :type periodic_normalization: bool
@@ -50,10 +54,10 @@ class LivingLabEnv(gym.Env, Environment):
             sim_data_paths: Mapping[str, str],
             start_time_step: int,
             end_time_step: int,
-            heat_pump_cfgs: Mapping[str, Any],
-            thermal_battery_cfgs: Mapping[str, Any],
-            pv_system_cfgs: Mapping[str, Any],
-            dynamics_cfgs: Mapping[str, Any],
+            heat_pump_cfgs: Union[HeatPump, Mapping[str, Any]],
+            thermal_battery_cfgs: Union[ThermalBattery, Mapping[str, Any]],
+            pv_system_cfgs: Union[PVSystem, Mapping[str, Any]],
+            dynamics_cfgs: Union[Dynamics, Mapping[str, Any]],
             periodic_normalization: bool,
             base_path: Union[str, Path] = '../data',
             active_observations: Optional[Iterable[str]]=[],
@@ -78,15 +82,18 @@ class LivingLabEnv(gym.Env, Environment):
             f'Found matching keys in both active and inactive observations: {self.active_observations.intersection(inactive_observations)}'
 
         # Devices
-        self.heat_pump = HeatPump(**heat_pump_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
-        self.thermal_battery = ThermalBattery(**thermal_battery_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
-        self.pv_system = PVSystem(**pv_system_cfgs, seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
+        self.heat_pump: HeatPump = self.load_device(device=heat_pump_cfgs, device_class=HeatPump)
+        self.thermal_battery: ThermalBattery = self.load_device(device=thermal_battery_cfgs, device_class=ThermalBattery)
+        self.pv_system: PVSystem = self.load_device(device=pv_system_cfgs, device_class=PVSystem)
 
         # Dynamics
-        dynamics_path = dynamics_cfgs.get('path', None)
-        if dynamics_path is not None:
-            dynamics_cfgs['path'] = os.path.join(base_path, dynamics_path.lstrip('/'))           
-        self.dynamics = LSTMDynamics(**dynamics_cfgs)
+        if isinstance(dynamics_cfgs, LSTMDynamics):
+            self.dynamics = dynamics_cfgs
+        else:
+            dynamics_path = dynamics_cfgs.get('path', None)
+            if dynamics_path is not None:
+                dynamics_cfgs['path'] = os.path.join(base_path, dynamics_path.lstrip('/'))           
+            self.dynamics = LSTMDynamics(**dynamics_cfgs)
 
         # Observation/action spaces
         self.observation_space = self.estimate_observation_space(periodic_normalization=periodic_normalization)
@@ -125,6 +132,11 @@ class LivingLabEnv(gym.Env, Environment):
         if update is not None:
             config.update(**update)
 
+        # Check episode length
+        episode_length = config.get('episode_length', None)
+        if episode_length is None:
+            config['episode_length'] = (config['end_time_step'] - config['start_time_step']) + 1
+
         # Manage observations
         observations_metadata = config.pop('observations_metadata', {})
         for obs, data in observations_metadata.items():
@@ -139,7 +151,7 @@ class LivingLabEnv(gym.Env, Environment):
             if periodic_info is not None:
                 min_, max_ = periodic_info['min'], periodic_info['max']
                 temp = kwargs.get('periodic_observations_metadata', {})
-                temp[obs] = range(min_, max_+1)
+                temp[obs] = (min_, max_+1)
                 kwargs.update({'periodic_observations_metadata': temp})
 
         # ASSUMPTION: the rest of the configuration matches the class interface
@@ -165,55 +177,16 @@ class LivingLabEnv(gym.Env, Environment):
         """Information dictionary returned upon calling `self.step()`."""
         _info = {}
         if self.terminated:
+            # Reward
             _info['reward'] = {
-                'min': self._episode_rewards.min(),
-                'max': self._episode_rewards.max(),
-                'sum': self._episode_rewards.sum(),
-                'mean': self._episode_rewards.mean(),
+                'min': self.episode_rewards.min().item(),
+                'max': self.episode_rewards.max().item(),
+                'sum': self.episode_rewards.sum().item(),
+                'mean': self.episode_rewards.mean().item(),
             }
 
-            # Devices' electricity consumption information
-            heat_pump_electricity_consumption = self.heat_pump.electricity_consumption
-            _info['heat_pump_electricity_consumption'] = {
-                'min': heat_pump_electricity_consumption.min(),
-                'max': heat_pump_electricity_consumption.max(),
-                'sum': heat_pump_electricity_consumption.sum(),
-                'mean': heat_pump_electricity_consumption.mean(),
-            }
-
-            thermal_battery_electricity_consumption = self.heat_pump.get_input_power(
-                output_power=self.thermal_battery.energy_balance,
-                outdoor_dry_bulb_temperature=self.weather.outdoor_dry_bulb_temperature[self.episode_start_time_step:self.episode_end_time_step+1]
-            )
-            _info['thermal_battery_electricity_consumption'] = {
-                'min': thermal_battery_electricity_consumption.min(),
-                'max': thermal_battery_electricity_consumption.max(),
-                'sum': thermal_battery_electricity_consumption.sum(),
-                'mean': thermal_battery_electricity_consumption.mean(),
-            }
-
-
-            # Total electricity consumption information
-            _info['net_electricity_consumption'] = {
-                'min': self._net_electricity_consumption.min(),
-                'max': self._net_electricity_consumption.max(),
-                'sum': self._net_electricity_consumption.sum(),
-                'mean': self._net_electricity_consumption.mean(),
-            }
-
-            _info['net_electricity_consumption_cost'] = {
-                'min': self._net_electricity_consumption_cost.min(),
-                'max': self._net_electricity_consumption_cost.max(),
-                'sum': self._net_electricity_consumption_cost.sum(),
-                'mean': self._net_electricity_consumption_cost.mean(),
-            }
-
-            _info['net_electricity_consumption_emissions'] = {
-                'min': self._net_electricity_consumption_emissions.min(),
-                'max': self._net_electricity_consumption_emissions.max(),
-                'sum': self._net_electricity_consumption_emissions.sum(),
-                'mean': self._net_electricity_consumption_emissions.mean(),
-            }
+            # KPIs
+            _info['kpis'] = self.get_kpis()
 
         return _info
     
@@ -239,6 +212,14 @@ class LivingLabEnv(gym.Env, Environment):
     def inactive_observations(self) -> Set[str]:
         """Set of observations hidden by the environment, but still used from the environment."""
         return self._inactive_observations
+    
+    @property
+    def observations_low_limit(self) -> Mapping[str, float]:
+        return self._observations_low_limit
+    
+    @property
+    def observations_high_limit(self) -> Mapping[str, float]:
+        return self._observations_high_limit
 
     @property
     def observation_space(self) -> spaces.Box:
@@ -262,22 +243,22 @@ class LivingLabEnv(gym.Env, Environment):
         return self._action_space
     
     @property
-    def episode_rewards(self) -> List[float]:
+    def episode_rewards(self) -> np.ndarray:
         """List of rewards achieved within an episode."""
         return self._episode_rewards
     
     @property
-    def net_electricity_consumption(self) -> List[float]:
+    def net_electricity_consumption(self) -> np.ndarray:
         """Total electricity imported from the grid at each `episode_time_step` [kWh]."""
         return self._net_electricity_consumption
     
     @property
-    def net_electricity_consumption_cost(self) -> List[float]:
+    def net_electricity_consumption_cost(self) -> np.ndarray:
         """Cost of the electricity imported from the grid at each `episode_time_step` [$*kWh]."""
         return self._net_electricity_consumption_cost
     
     @property
-    def net_electricity_consumption_emissions(self) -> List[float]:
+    def net_electricity_consumption_emissions(self) -> np.ndarray:
         """Emissions of the electricity imported from the grid at each `episode_time_step` [kgCO2*kWh]."""
         return self._net_electricity_consumption_emissions
     
@@ -290,7 +271,10 @@ class LivingLabEnv(gym.Env, Environment):
     def periodic_observations_metadata(self, new_metadata: Mapping[str, Optional[Iterable[Union[int, float]]]]):
         if new_metadata is None:
             new_metadata = {'hour': range(1, 25), 'month': range(1, 13), 'day_type': range(1, 8)}
-        self._periodic_observations_metadata = dict(**new_metadata)
+
+        self._periodic_observations_metadata = {}
+        for k, v in new_metadata.items():
+            self._periodic_observations_metadata[k] = v if isinstance(v, range) else range(min(v), max(v))
 
     @active_observations.setter
     def active_observations(self, new_obs: Optional[Iterable[str]]):
@@ -320,7 +304,7 @@ class LivingLabEnv(gym.Env, Environment):
     def action_space(self, new_space: spaces.Box):
         self._action_space = new_space
 
-    def reset(self, seed: int=None, options: Mapping[str, Any]={}) -> Tuple[np.ndarray, Mapping[str, Any]]:
+    def reset(self, seed: int=None, options: Optional[Mapping[str, Any]]=None) -> Tuple[np.ndarray, Mapping[str, Any]]:
         """
         Reset `LivingLabEnv` to its initial state.
 
@@ -338,6 +322,10 @@ class LivingLabEnv(gym.Env, Environment):
         """
         gym.Env.reset(self)
         Environment.reset(self)
+
+        # Check options
+        if options is None:
+            options = {}
 
         # Update seed
         if seed is not None:
@@ -413,21 +401,64 @@ class LivingLabEnv(gym.Env, Environment):
         self._next_time_step()
 
         return self.observations(), reward, self.terminated, self.truncated, self.info
-
-    def observations(self, include_all: bool=False, periodic_normalization: Optional[bool]=None, past: bool=True, names: bool=False) -> Union[np.ndarray, Mapping[str, int|float]]:
+    
+    def load_device(self, device: Union[Device, Mapping[str, Any]], device_class: Callable) -> Device:
         """
-        Return observations at the current `self.time_step`.
+        Load a simulation-ready device.
 
         Parameters
         ----------
-        :param periodic_normalization: whether to normalize periodic temporal variables
+        :param device: The device object or its configurations.
+        :type device: Union[Device, Mapping[str, Any]]
+        :param device_class: Class of the device to load.
+        :type device_class: Callable
+
+        Returns
+        ----------
+        :return: the simulation-ready device.
+        :rtype: Device
+        """
+        if isinstance(device, device_class):
+            device.start_time_step = self.start_time_step
+            device.end_time_step = self.end_time_step
+            device.episode_length = self.episode_length
+        else:
+            device_cfgs = device
+            device_cfgs.update({
+                'seed': self.seed,
+                'start_time_step': self.start_time_step,
+                'end_time_step': self.end_time_step,
+                'episode_length': self.episode_length,
+            })
+            device = device_class(**device_cfgs)
+
+        return device
+
+    def observations(
+            self, 
+            include_all: bool=False,
+            normalize: bool=False,
+            periodic_normalization: Optional[bool]=None, 
+            past: bool=True, 
+            names: bool=False
+        ) -> Union[np.ndarray, Mapping[str, int|float]]:
+        """
+        Return observations at the current `self.episode_time_step`.
+
+        Parameters
+        ----------
+        :param include_all: Whether to include all observations in `self.observation_names`.
+        :type include_all: bool
+        :param normalize: Whether to normalize observations in [0,1] with min-max.
+        :type normalize: bool
+        :param periodic_normalization: Whether to normalize periodic temporal variables.
         :type periodic_normalization: bool
-        :param names: whether to return a dictionary with observation names
+        :param names: Whether to return a dictionary with observation names.
         :type names: bool
 
         Returns
         ----------
-        :return: the current observation
+        :return: the current observation.
         :rtype: Union[np.ndarray, Mapping[str, int|float]]
         """
         if periodic_normalization is None:
@@ -451,8 +482,16 @@ class LivingLabEnv(gym.Env, Environment):
                     else:
                         observations[k] = v
         else:
-            # FIlter active observations
+            # Filter active observations
             observations = dict(**data) if include_all else {k: v for k, v in data.items() if k in self._active_observations}
+
+        # Normalize observations using min-max within [0,1]
+        if normalize:
+            nm = Normalize(0.0, 1.0)
+            for k,v in observations.items():
+                nm.x_min = self._observations_low_limit[k]
+                nm.x_max = self._observations_high_limit[k]
+                observations[k] = nm * v
 
         # Return dictionary with observation names
         if names:
@@ -501,13 +540,15 @@ class LivingLabEnv(gym.Env, Environment):
             func, args = actions[key]
             func(*args)
     
-    def estimate_observation_space(self, periodic_normalization: Optional[bool]=None) -> spaces.Box:
+    def estimate_observation_space(self, normalize: bool=False, periodic_normalization: Optional[bool]=None) -> spaces.Box:
         """
         Estimate observation space from simulation data.
 
         Parameters
         ----------
-        :param periodic_normalization: whether to normalize periodic temporal variables
+        :param normalize: Whether to normalize observations in [0,1] with min-max.
+        :type normalize: bool
+        :param periodic_normalization: Whether to normalize periodic temporal variables.
         :type periodic_normalization: bool
 
         Returns
@@ -519,8 +560,12 @@ class LivingLabEnv(gym.Env, Environment):
             periodic_normalization = self.periodic_normalization
             
         # Get observation space limits
-        low, high = self.estimate_observation_space_limits(periodic_normalization=periodic_normalization)
-        low, high = list(low.values()), list(high.values())
+        self._observations_low_limit, self._observations_high_limit = self.estimate_observation_space_limits(periodic_normalization=periodic_normalization)
+        if normalize:
+            low = [0.0] * len(self._observations_low_limit)
+            high = [1.0] * len(self._observations_high_limit)
+        else:
+            low, high = list(self._observations_low_limit.values()), list(self._observations_high_limit.values())
 
         return spaces.Box(low=np.array(low, dtype=np.float32), high=np.array(high, dtype=np.float32), dtype=np.float32)
 
@@ -702,6 +747,57 @@ class LivingLabEnv(gym.Env, Environment):
         min_, max_ = self.dynamics.input_norm_min[idx], self.dynamics.input_norm_max[idx]
         indoor_dry_bulb_temperature = indoor_dry_bulb_temperature_norm*(max_ - min_) + min_
         self.energy_simulation.indoor_dry_bulb_temperature[self.time_step] = indoor_dry_bulb_temperature.item()
+
+
+    def get_kpis(self, time_step: Optional[int]=None) -> Dict[str, float]:
+        """
+        Get the Key Performance Indicator values at a given `time_step`
+        (using the running `Environment.episode_time_step` if `None` is given).
+
+        Parameters
+        ----------
+        :param episode_time_step: Maximum time step to retreive values for KPIs calculation.
+        :type episode_time_step: Optional[int]
+
+        Returns
+        ----------
+        :return: a dictionary `{kpi: value}`
+        :rtype: Dict[str, float]
+        """
+        time_step = self.episode_time_step if time_step is None else time_step
+        assert self.episode_start_time_step < time_step <= self.episode_end_time_step, \
+            f'Invalid time step (time_step={time_step} not in ({self.episode_start_time_step}, {self.episode_start_time_step}]).'
+
+        kpis = {}
+
+        # Discomfort
+        lower_t, upper_t = self.episode_start_time_step, self.episode_start_time_step + time_step + 1
+        indoor_dry_bulb_temperature_delta = abs(
+            self.energy_simulation.indoor_dry_bulb_temperature[lower_t:upper_t] - 
+            self.energy_simulation.indoor_dry_bulb_temperature_cooling_set_point[lower_t:upper_t]
+        )
+        comfort_band = self.energy_simulation.comfort_band[lower_t:upper_t]
+        discomfort = (indoor_dry_bulb_temperature_delta > comfort_band).astype(np.int8)
+        kpis['discomfort'] = discomfort.mean().item()
+        kpis['indoor_dry_bulb_temperature_delta'] = indoor_dry_bulb_temperature_delta.sum().item()
+        kpis['avg_indoor_dry_bulb_temperature_delta'] = indoor_dry_bulb_temperature_delta.mean().item()
+
+        # Net electricity consumption
+        net_electricity_consumption = self.net_electricity_consumption[:time_step+1]
+        kpis['net_electricity_consumption'] = net_electricity_consumption.sum().item()
+        kpis['avg_net_electricity_consumption'] = net_electricity_consumption.mean().item()
+
+        # Net electricity consumption cost
+        net_electricity_consumption_cost = self.net_electricity_consumption_cost[:time_step+1]
+        kpis['net_electricity_consumption_cost'] = net_electricity_consumption_cost.sum().item()
+        kpis['avg_net_electricity_consumption_cost'] = net_electricity_consumption_cost.mean().item()
+
+        # Net electricity consumption emissions
+        net_electricity_consumption_emissions = self.net_electricity_consumption_emissions[:time_step+1]
+        kpis['net_electricity_consumption_emissions'] = net_electricity_consumption_emissions.sum().item()
+        kpis['avg_net_electricity_consumption_emissions'] = net_electricity_consumption_emissions.mean().item()
+
+        return kpis
 
     def _get_observations_data(self, past: bool=True) -> Mapping[str, Union[int, float]]:        
         # Current simulation data

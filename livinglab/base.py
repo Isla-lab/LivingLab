@@ -13,23 +13,25 @@ class Environment(ABC):
     :param seed: Experiment seed for reproducibility.
     :type seed: Optional[int]
     :start_time_step: Simulation start time step.
-    :type start_time_step: int
+    :type start_time_step: Optional[int]
     :end_time_step: Simulation end time step.
-    :type end_time_step: int
+    :type end_time_step: Optional[int]
     :param episode_length: Time steps duration of a simulation episode.
-    :type episode_length: int
+    :type episode_length: Optional[int]
     """
-    def __init__(self, seed: Optional[int], start_time_step: int, end_time_step: int, episode_length: Optional[int]=None):
+    def __init__(self, seed: Optional[int]=None, start_time_step: Optional[int]=None, end_time_step: Optional[int]=None, episode_length: Optional[int]=None):
         self.seed = seed
+
+        # Checks
+        assert not (start_time_step is None and end_time_step is not None), f'Invalid time steps initialization. Initialize both time steps or set both `None`.'
+        assert not (start_time_step is not None and end_time_step is None), f'Invalid time steps initialization. Initialize both time steps or set both `None`.'
 
         # Simulation info
         self.start_time_step = start_time_step
         self.end_time_step = end_time_step
 
         # Episodic info
-        self.episode_length = episode_length        
-        self.simulation_episodes = (self.end_time_step + 1) // self.episode_length
-        self.episode_counter = -1
+        self.episode_length = episode_length
 
     @property
     def seed(self) -> int:
@@ -92,24 +94,41 @@ class Environment(ABC):
         self._time_step = new_step
 
     @start_time_step.setter
-    def start_time_step(self, new_step: int):
+    def start_time_step(self, new_step: Optional[int]):
+        if hasattr(self, '_end_time_step'):
+            if self._end_time_step is not None:
+                assert new_step is None or new_step < self._end_time_step, \
+                    f'Invalid simulation start/end steps (start={new_step} >= end={self._end_time_step}).'
+            
         self._start_time_step = new_step
 
     @end_time_step.setter
-    def end_time_step(self, new_step: int):
-        assert new_step > self._start_time_step, \
-            f'Invalid simulation start/end steps (start={self._start_time_step} >= end={new_step}).'
+    def end_time_step(self, new_step: Optional[int]):
+        if hasattr(self, '_start_time_step'):
+            if self._start_time_step is not None:
+                assert new_step is None or new_step > self._start_time_step, \
+                    f'Invalid simulation start/end steps (start={self._start_time_step} >= end={new_step}).'
+        
         self._end_time_step = new_step
 
     @episode_length.setter
-    def episode_length(self, new_len: int):
-        if new_len is None:
-            self._episode_length = (self._end_time_step - self._start_time_step) + 1
-        else:
-            self._episode_length = new_len
+    def episode_length(self, new_len: Optional[int]):
+        if self._start_time_step is not None and self._end_time_step is not None:
+            if new_len is None:
+                self._episode_length = (self._end_time_step - self._start_time_step) + 1
+            else:
+                self._episode_length = new_len
 
-        if (self._end_time_step + 1) % self._episode_length != 0:
-            print(f'[WARN] Episode length {self._episode_length} does not assure a full simulation coverage.')
+            if (self._end_time_step + 1) % self._episode_length != 0:
+                print(f'[WARN] Episode length {self._episode_length} does not assure a full simulation coverage.')
+        else:
+            if new_len is not None:
+                print('[WARN] Trying to set new episode length with no `start_time_step` and `end_time_step`. Automatically set to None.')
+            self._episode_length = None
+
+        if self._episode_length is not None:    
+            self.simulation_episodes = (self._end_time_step + 1) // self.episode_length
+            self.episode_counter = -1
 
     @simulation_episodes.setter
     def simulation_episodes(self, n: int):
@@ -161,13 +180,15 @@ class Device(Environment):
     ----------
     :param efficiency: Technical efficiency.
     :type efficiency: float
+    :param **kwargs: Keyword arguments to initialize `Environment`.
+    :type **kwargs: Mapping[str, Any]
     """
     def __init__(self, efficiency: float, **kwargs: Mapping[str, Any]):
         super().__init__(**kwargs)
         self.efficiency = efficiency
 
     @property
-    def efficiency(self):
+    def efficiency(self) -> float:
         """Device's technical efficiency."""
         return self._efficiency
     
