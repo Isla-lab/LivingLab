@@ -2,7 +2,7 @@ from gymnasium.envs.registration import register
 
 register(
     id='LivingLab-v0',
-    entry_point='livinglab.envs:LivingLabEnv',
+    entry_point='livinglab.envs.livinglab_env:LivingLabEnv',
     kwargs={
         'sim_data_paths': {
             'energy_simulation': "datasets/citylearn_challenge_2023_phase_1/Building_1.csv",

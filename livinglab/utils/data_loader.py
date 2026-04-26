@@ -1,8 +1,11 @@
 import numpy as np
 import pandas as pd
+from ladybug.epw import EPW
 
 from abc import ABC, abstractmethod
 from typing import Optional, Mapping, Union, Iterable, List
+
+from livinglab.utils.functions import sol_air_temperature
 
 
 class TimeSeriesData(ABC):
@@ -141,6 +144,7 @@ class Weather(TimeSeriesData):
     Parameters
     ----------
     :param path: Path to time series DataFrame.
+    :type path: str
     :param start_time_step: Time step to start reading variables.
     :type start_time_step: int, optional
     :param end_time_step: Time step to end reading variables.
@@ -160,6 +164,13 @@ class Weather(TimeSeriesData):
         self.outdoor_relative_humidity = self.add_gaussian_noise(sim_data['outdoor_relative_humidity'])
         self.diffuse_solar_irradiance = self.add_gaussian_noise(sim_data['diffuse_solar_irradiance'])
         self.direct_solar_irradiance = self.add_gaussian_noise(sim_data['direct_solar_irradiance'])
+
+        # Surface level and underground temperature calculation
+        self.surface_ground_temperature = sol_air_temperature(
+            t_air=self.outdoor_dry_bulb_temperature,
+            g_direct=self.direct_solar_irradiance,
+            g_diffuse=self.diffuse_solar_irradiance
+        )
 
 
 class Pricing(TimeSeriesData):
