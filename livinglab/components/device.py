@@ -1,8 +1,9 @@
 import numpy as np
 
-from typing import Any, Optional, Mapping
+from typing import Any, Optional, Union, Mapping
 
 from livinglab.base import Device
+from livinglab.utils.functions import extract_kasuda_parameters
 
 
 class ElectricDevice(Device):
@@ -175,7 +176,85 @@ class HeatPump(ElectricDevice):
         :rtype: float
         """
         return output_power/self.get_cop(outdoor_dry_bulb_temperature)
+    
 
+class DualSourceHeatPump(HeatPump):
+    def __init__(self, efficiency, nominal_power, mode, target_temperature, tank_depth, soil_alpha, kasuda_data, **kwargs):
+        super().__init__(efficiency=efficiency, nominal_power=nominal_power, mode=mode, target_temperature=target_temperature, **kwargs)
+
+        # Water tank info
+        self.tank_depth = tank_depth
+        self.soil_alpha = soil_alpha
+
+        # Parameters for the Kasuda model
+        self.kasuda_params = extract_kasuda_parameters(path=kasuda_data)
+
+        # Active source
+        self.active_source = None
+
+    @property
+    def kasuda_params(self) -> Mapping[str, Union[int, float]]:
+        return self._kasuda_params
+    
+    @kasuda_params.setter
+    def kasuda_params(self, new_params: Mapping[str, Union[str, float]]):
+        self._kasuda_params = new_params
+
+    def kasuda_underground_temperature(self, t: int) -> float:
+        """
+        Compute the underground temperature at `self.tank_depth` level using the Kasuda-Archenbach model [1].
+        
+        Parameters
+        ----------
+        :param t: Day of the year (1-365)
+        :type t: int
+
+        Returns
+        ----------
+        :return: the underground temperature at `self.tank_depth` level.
+        :rtype: float
+
+        References
+        ----------
+        [1] Earth Temperature and Thermal Diffusivity at Selected Stations in the United States. Kasuda, et al. 1965
+        """
+        omega = 2 * np.pi/365                              # Annual angular frequency
+        decay = np.sqrt(np.pi / (365*self.soil_alpha))     # Spatial decay rate
+        lag = 0.5 * np.sqrt(365 / (np.pi*self.soil_alpha)) # Phase lag coefficient
+
+        damping = np.exp(-self.tank_depth * decay)
+        phase = omega * (t - self.kasuda_params['t0'] - self.tank_depth*lag)
+
+        return self.kasuda_params['mean'] - self.kasuda_params['amplitude']*damping*np.cos(phase)
+
+    def get_max_output_power(self, t: int, outdoor_dry_bulb_temperature: float, max_electric_power: Optional[float]) -> float:
+        """
+        Calculate maximum output power from heat pump given `cop`, `available_nominal_power` and `max_electric_power` limitations.
+
+        Parameters
+        ----------
+        :param t: Day of the year (1-365)
+        :type t: int
+        :param outdoor_dry_bulb_temperature: Outdoor dry bulb temperature [C].
+        :type outdoor_dry_bulb_temperature: float
+        :param max_electric_power: Maximum amount of electric power that the heat pump can consume from the power grid.
+        :type max_electric_power: float
+
+        Returns
+        ----------
+        :return: the calculated maximum output power.
+        :rtype: float
+        """
+        if self.active_source == 'air':
+            outdoor_source_temperature = outdoor_dry_bulb_temperature
+        elif self.active_source == 'water':
+            outdoor_source_temperature = self.kasuda_underground_temperature(t=t)
+
+        super().get_max_output_power(
+            outdoor_dry_bulb_temperature=outdoor_source_temperature,
+            max_electric_power=max_electric_power
+        )
+        
 
 class PVSystem(ElectricDevice):
     """
