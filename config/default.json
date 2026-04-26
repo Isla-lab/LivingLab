@@ -83,7 +83,8 @@
         "nominal_power": 4.12,
         "efficiency": 0.25,
         "mode": "cooling",
-        "target_temperature": 8.0
+        "target_temperature": 8.0,
+        "kasuda_data": "/datasets/citylearn_challenge_2023_phase_1/USA_CA_Riverside.Muni.AP.722869_TMY3.epw"
     },
     "thermal_battery_cfgs": {
         "capacity": 4.0,
