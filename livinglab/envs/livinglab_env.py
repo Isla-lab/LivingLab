@@ -11,8 +11,9 @@ from typing_extensions import Self
 
 from livinglab.base import Environment, Device
 from livinglab.components.dynamics import Dynamics, LSTMDynamics
-from livinglab.components.device import HeatPump, PVSystem
+from livinglab.components.device import DualSourceHeatPump, PVSystem
 from livinglab.components.battery import ThermalBattery
+from livinglab.utils import functions
 from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
 from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
 from livinglab.utils.rewards import ComfortRewardFuction
@@ -54,7 +55,7 @@ class LivingLabEnv(gym.Env, Environment):
             sim_data_paths: Mapping[str, str],
             start_time_step: int,
             end_time_step: int,
-            heat_pump_cfgs: Union[HeatPump, Mapping[str, Any]],
+            heat_pump_cfgs: Union[DualSourceHeatPump, Mapping[str, Any]],
             thermal_battery_cfgs: Union[ThermalBattery, Mapping[str, Any]],
             pv_system_cfgs: Union[PVSystem, Mapping[str, Any]],
             dynamics_cfgs: Union[Dynamics, Mapping[str, Any]],
@@ -82,7 +83,7 @@ class LivingLabEnv(gym.Env, Environment):
             f'Found matching keys in both active and inactive observations: {self.active_observations.intersection(inactive_observations)}'
 
         # Devices
-        self.heat_pump: HeatPump = self.load_device(device=heat_pump_cfgs, device_class=HeatPump)
+        self.heat_pump: DualSourceHeatPump = self.load_device(device=heat_pump_cfgs, device_class=DualSourceHeatPump)
         self.thermal_battery: ThermalBattery = self.load_device(device=thermal_battery_cfgs, device_class=ThermalBattery)
         self.pv_system: PVSystem = self.load_device(device=pv_system_cfgs, device_class=PVSystem)
 
@@ -194,7 +195,7 @@ class LivingLabEnv(gym.Env, Environment):
     def observation_names(self) -> List[str]:
         """Names of all observations that can be returned by the environment."""
         sim_data_names = self.energy_simulation.observation_names + self.weather.observation_names + self.pricing.observation_names + self.carbon_intensity.observation_names                
-        device_obs_names = ['thermal_battery_soc', 'net_electricity_consumption']
+        device_obs_names = ['thermal_battery_soc', 'net_electricity_consumption', 'underground_temperature']
 
         return sim_data_names + device_obs_names
     
@@ -266,6 +267,13 @@ class LivingLabEnv(gym.Env, Environment):
     def simulate_dynamics(self) -> bool:
         """Signal for enabling dynamics simulation."""
         return self.dynamics._model_input[0][0] is not None
+
+    @property
+    def doy(self) -> int:
+        """Return the Day Of the Year number of the current `self.time_step`"""
+        month = self.energy_simulation.month[self.time_step]
+        rel_day = min(int((self.time_step+1) / 24)+1, functions.DAYS_PER_MONTH[month])
+        return rel_day + np.sum(functions.DAYS_PER_MONTH[:month-1])
 
     @periodic_observations_metadata.setter
     def periodic_observations_metadata(self, new_metadata: Mapping[str, Optional[Iterable[Union[int, float]]]]):
@@ -393,7 +401,7 @@ class LivingLabEnv(gym.Env, Environment):
         self._net_electricity_consumption_emissions[self.episode_time_step] = net_electricity_consumption * self.carbon_intensity.carbon_intensity[self.time_step]
 
         # Compute reward
-        reward_obs = self.observations(include_all=True, past=False, names=True)
+        reward_obs = self.observations(include_all=True, periodic_normalization=False, past=False, names=True)
         reward = self.reward_fn.calculate(observations=reward_obs)
         self._episode_rewards[self.episode_time_step] = reward
 
@@ -519,6 +527,9 @@ class LivingLabEnv(gym.Env, Environment):
         :param thermal_battery_action: fraction of the Thermal Battery `capacity` to charge\discharge.
         :type thermal_battery_action: float
         """
+        # Set the heat-pump active source
+        if isinstance(self.heat_pump, DualSourceHeatPump):
+            self.heat_pump.active_source = 'air' if heat_pump_action >= 0.0 else 'water'
 
         # Default action priority
         actions: Mapping[str, Tuple[Callable, Any]] = {
@@ -617,6 +628,17 @@ class LivingLabEnv(gym.Env, Environment):
                 low[key] = 0.0
                 high[key] = sim_data[key].max()
 
+            elif key == 'underground_temperature':
+                rel_days = np.arange(1, int((self.end_time_step+1)/24), step=1, dtype=np.int32)
+                months = sim_data['month'][::24]
+                abs_days = np.array(
+                    [dd + np.sum(functions.DAYS_PER_MONTH[:mm-1]) for dd, mm in zip(rel_days, months)],
+                    dtype=np.int32
+                )
+                temps = self.heat_pump.kasuda_underground_temperature(t=abs_days)
+                low[key] = temps.min()
+                high[key] = temps.max()
+
             elif key in self.periodic_observations_metadata.keys():
                 periodic_observations = self.periodic_observations_metadata[key]
                 if periodic_normalization:
@@ -647,7 +669,10 @@ class LivingLabEnv(gym.Env, Environment):
 
         for key in self.action_names:
             if key == 'heat_pump':
-                low.append(0.0)
+                if isinstance(self.heat_pump, DualSourceHeatPump):
+                    low.append(-1.0)
+                else:
+                    low.append(0.0)
                 high.append(1.0)
 
             elif key == 'thermal_battery':
@@ -668,12 +693,20 @@ class LivingLabEnv(gym.Env, Environment):
         :type heat_pump_action: float
         """
         # Calculate cooling demand according to the heat pump action
-        if self.simulate_dynamics:
-            output_power = heat_pump_action * self.heat_pump.nominal_power
-            demand = self.heat_pump.get_max_output_power(
-                outdoor_dry_bulb_temperature=self.weather.outdoor_dry_bulb_temperature[self.time_step],
-                max_electric_power=output_power
-            )
+        if self.simulate_dynamics:            
+            if isinstance(self.heat_pump, DualSourceHeatPump):
+                output_power = abs(heat_pump_action) * self.heat_pump.nominal_power
+                demand = self.heat_pump.get_max_output_power(
+                    t=self.doy,
+                    outdoor_dry_bulb_temperature=self.weather.outdoor_dry_bulb_temperature[self.time_step],
+                    max_electric_power=output_power
+                )
+            else:
+                output_power = heat_pump_action * self.heat_pump.nominal_power
+                demand = self.heat_pump.get_max_output_power(
+                    outdoor_dry_bulb_temperature=self.weather.outdoor_dry_bulb_temperature[self.time_step],
+                    max_electric_power=output_power
+                )
 
             # Update demand for both the current and the next time step
             self.energy_simulation.cooling_demand[self.time_step] = demand
@@ -688,13 +721,19 @@ class LivingLabEnv(gym.Env, Environment):
         thermal_battery_output = min(self.thermal_battery.energy_balance[self.episode_time_step], 0.0)
 
         # Maximum possible heat pump output
-        max_hp_output = self.heat_pump.get_max_output_power(outdoor_dry_bulb_temperature=temperature, max_electric_power=None)
+        if isinstance(self.heat_pump, DualSourceHeatPump):
+            max_hp_output = self.heat_pump.get_max_output_power(t=self.doy, outdoor_dry_bulb_temperature=temperature, max_electric_power=None)
+        else:
+            max_hp_output = self.heat_pump.get_max_output_power(outdoor_dry_bulb_temperature=temperature, max_electric_power=None)        
         assert demand <= max_hp_output, f'[STEP:{self.time_step}] Cooling demand exceeds Heat Pump maximum output ' + \
             f'(demand={demand} > max_output={max_hp_output})'
 
         # Actual Heat Pump output and consumption
         heat_pump_output = min(demand - thermal_battery_output, max_hp_output)
-        electricity_consumption = self.heat_pump.get_input_power(output_power=heat_pump_output, outdoor_dry_bulb_temperature=temperature)
+        if isinstance(self.heat_pump, DualSourceHeatPump):
+            electricity_consumption = self.heat_pump.get_input_power(output_power=heat_pump_output, t=self.doy, outdoor_dry_bulb_temperature=temperature)
+        else:
+            electricity_consumption = self.heat_pump.get_input_power(output_power=heat_pump_output, outdoor_dry_bulb_temperature=temperature)
         assert electricity_consumption >= 0.0, f'[STEP: {self.time_step}] Negative electricity consumption for cooling demand. Found {electricity_consumption}'
 
         # Update
@@ -714,7 +753,10 @@ class LivingLabEnv(gym.Env, Environment):
 
         # Charge the Thermal Battery via the Heat Pump
         if energy > 0.0:
-            max_hp_output = self.heat_pump.get_max_output_power(outdoor_dry_bulb_temperature=temerature, max_electric_power=None)
+            if isinstance(self.heat_pump, DualSourceHeatPump):
+                max_hp_output = self.heat_pump.get_max_output_power(t=self.doy, outdoor_dry_bulb_temperature=temerature, max_electric_power=None)
+            else:
+                max_hp_output = self.heat_pump.get_max_output_power(outdoor_dry_bulb_temperature=temerature, max_electric_power=None)
             energy = min(energy, max_hp_output)
 
         # Supply the cooling demand via the Thermal Battery first
@@ -727,7 +769,10 @@ class LivingLabEnv(gym.Env, Environment):
 
         # Compute the required electricity to charge the battery
         charged_energy = max(self.thermal_battery.energy_balance[self.episode_time_step], 0.0)
-        electricity_consumption = self.heat_pump.get_input_power(output_power=charged_energy, outdoor_dry_bulb_temperature=temerature)
+        if isinstance(self.heat_pump, DualSourceHeatPump):
+            electricity_consumption = self.heat_pump.get_input_power(output_power=charged_energy, t=self.doy, outdoor_dry_bulb_temperature=temerature)
+        else:
+            electricity_consumption = self.heat_pump.get_input_power(output_power=charged_energy, outdoor_dry_bulb_temperature=temerature)
         self.heat_pump.update_electricity_consumption(electricity_consumption)
 
     def update_indoor_dry_bulb_temperature(self):
@@ -810,6 +855,9 @@ class LivingLabEnv(gym.Env, Environment):
 
         # Update solar generation
         observations['solar_generation'] = self.pv_system.get_generation(inverter_ac_power_per_kw=observations['solar_generation'])
+
+        # Compute underground temperature
+        observations['underground_temperature'] = self.heat_pump.kasuda_underground_temperature(t=self.doy)
 
         # Update with possible past observations
         past_t = min(self.time_step - 1, 0) if past else self.time_step

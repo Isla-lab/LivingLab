@@ -65,7 +65,7 @@ class ElectricDevice(Device):
 
 class HeatPump(ElectricDevice):
     """
-    Electric device class.
+    Air powered Heat Pump class.
 
     Parameters
     ----------
@@ -179,6 +179,32 @@ class HeatPump(ElectricDevice):
     
 
 class DualSourceHeatPump(HeatPump):
+    """
+    Dual Source Heat Pump device class.
+
+    Parameters
+    ----------
+    :param efficiency: Technical efficiency.
+    :type efficiency: float
+    :param nominal_power: Heat Pump's nominal power.
+    :type nominal_power: float
+    :param mode: Heat Pump HVAC mode (either `cooling` or `heating`).
+    :type mode: str
+    :param target_temperature: Target temperature for CoP measurement.
+    :type target_temperature: float
+    :param tank_depth: Depth level of the undergound loop.
+    :type tank_depth: float
+    :param soil_alpha: Soil thermal diffusivity.
+    :type soil_alpha: float
+    :param kasuda_data: Path to the data for computing parameters for the Kasuda model.
+    :type kasuda_data: str
+    :param **kwargs: Other keyword arguments to initialize super classes.
+    :type **kwargs: Mapping[str, Any]
+
+    NOTE
+    ----------
+    This Heat Pump sources its energy either from the external air or water stored in an underground loop.
+    """
     def __init__(self, efficiency, nominal_power, mode, target_temperature, tank_depth, soil_alpha, kasuda_data, **kwargs):
         super().__init__(efficiency=efficiency, nominal_power=nominal_power, mode=mode, target_temperature=target_temperature, **kwargs)
 
@@ -190,19 +216,30 @@ class DualSourceHeatPump(HeatPump):
         self.kasuda_params = extract_kasuda_parameters(path=kasuda_data)
 
         # Active source
-        self.active_source = None
+        self.active_source = 'air'
+
+    @property
+    def active_source(self) -> str:
+        """Return the source currently used by the DSHP."""
+        return self._active_source
 
     @property
     def kasuda_params(self) -> Mapping[str, Union[int, float]]:
+        """Return the parameters used by the Kasuda model."""
         return self._kasuda_params
+    
+    @active_source.setter
+    def active_source(self, new_source: str):
+        assert new_source in ['air', 'water'], f'Unknown HP source {new_source}. Must be either `air` or `water`.'
+        self._active_source = new_source
     
     @kasuda_params.setter
     def kasuda_params(self, new_params: Mapping[str, Union[str, float]]):
         self._kasuda_params = new_params
 
-    def kasuda_underground_temperature(self, t: int) -> float:
+    def kasuda_underground_temperature(self, t: Union[int, np.ndarray]) -> Union[float, np.ndarray]:
         """
-        Compute the underground temperature at `self.tank_depth` level using the Kasuda-Archenbach model [1].
+        Compute the underground water temperature at `self.tank_depth` level using the Kasuda-Archenbach model [1].
         
         Parameters
         ----------
@@ -211,21 +248,27 @@ class DualSourceHeatPump(HeatPump):
 
         Returns
         ----------
-        :return: the underground temperature at `self.tank_depth` level.
+        :return: the underground water temperature at `self.tank_depth` level.
         :rtype: float
 
         References
         ----------
         [1] Earth Temperature and Thermal Diffusivity at Selected Stations in the United States. Kasuda, et al. 1965
         """
+        if isinstance(t, np.ndarray):
+            z = np.array([self.tank_depth]*len(t), dtype=np.float32)
+        else:
+            z = self.tank_depth
+        
         omega = 2 * np.pi/365                              # Annual angular frequency
         decay = np.sqrt(np.pi / (365*self.soil_alpha))     # Spatial decay rate
         lag = 0.5 * np.sqrt(365 / (np.pi*self.soil_alpha)) # Phase lag coefficient
 
-        damping = np.exp(-self.tank_depth * decay)
-        phase = omega * (t - self.kasuda_params['t0'] - self.tank_depth*lag)
+        damping = np.exp(-z * decay)
+        phase = omega * (t - self.kasuda_params['t0'] - z*lag)
 
-        return self.kasuda_params['mean'] - self.kasuda_params['amplitude']*damping*np.cos(phase)
+        temperature = self.kasuda_params['mean'] - self.kasuda_params['amplitude']*damping*np.cos(phase)
+        return temperature.astype(np.float32)
 
     def get_max_output_power(self, t: int, outdoor_dry_bulb_temperature: float, max_electric_power: Optional[float]) -> float:
         """
@@ -245,14 +288,42 @@ class DualSourceHeatPump(HeatPump):
         :return: the calculated maximum output power.
         :rtype: float
         """
-        if self.active_source == 'air':
+        if self._active_source == 'air':
             outdoor_source_temperature = outdoor_dry_bulb_temperature
-        elif self.active_source == 'water':
+        elif self._active_source == 'water':
             outdoor_source_temperature = self.kasuda_underground_temperature(t=t)
 
-        super().get_max_output_power(
+        return super().get_max_output_power(
             outdoor_dry_bulb_temperature=outdoor_source_temperature,
             max_electric_power=max_electric_power
+        )
+    
+    def get_input_power(self, output_power: float, t: int,  outdoor_dry_bulb_temperature: float) -> float:
+        """
+        Calculate power needed to meet `output_power` given `cop` limitations.
+
+        Parameters
+        ----------
+        :param t: Day of the year (1-365)
+        :type t: int
+        :param output_power: Output power from heat pump.
+        :type output_power: float
+        :param outdoor_dry_bulb_temperature: Outdoor dry bulb temperature [C].
+        :type outdoor_dry_bulb_temperature: float
+
+        Returns
+        ----------
+        :return: the calculated input power to supply.
+        :rtype: float
+        """
+        if self._active_source == 'air':
+            outdoor_source_temperature = outdoor_dry_bulb_temperature
+        elif self._active_source == 'water':
+            outdoor_source_temperature = self.kasuda_underground_temperature(t=t)
+
+        return super().get_input_power(
+            output_power=output_power,
+            outdoor_dry_bulb_temperature=outdoor_source_temperature
         )
         
 
