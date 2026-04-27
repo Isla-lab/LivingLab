@@ -77,6 +77,9 @@
         },
         "net_electricity_consumption": {
             "active": true
+        },
+        "underground_temperature": {
+            "active": true
         }
     },
     "heat_pump_cfgs": {
@@ -84,7 +87,9 @@
         "efficiency": 0.25,
         "mode": "cooling",
         "target_temperature": 8.0,
-        "kasuda_data": "/datasets/citylearn_challenge_2023_phase_1/USA_CA_Riverside.Muni.AP.722869_TMY3.epw"
+        "tank_depth": 10.0,
+        "soil_alpha": 0.052,
+        "kasuda_data": "../data/datasets/citylearn_challenge_2023_phase_1/USA_TX_San.Antonio.Intl.AP.722530_TMY3.epw"
     },
     "thermal_battery_cfgs": {
         "capacity": 4.0,
