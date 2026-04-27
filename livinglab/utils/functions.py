@@ -5,9 +5,9 @@ from typing import Optional, Union, List, Mapping
 
 
 # ASSUMPTION: non-leap year
-DAY_PER_MONTH = np.array(
+DAYS_PER_MONTH = np.array(
     [31, 28, 31, 30, 31, 30, 31, 31, 30, 30, 31, 30, 31], 
-    dtype=np.int8
+    dtype=np.int32
 )
 
 
