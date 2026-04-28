@@ -61,6 +61,7 @@ We recommend using a [Miniconda](https://www.anaconda.com/docs/getting-started/m
     
     # 2. Install utilities
     pip install ipywidgets
+    pip install ladybug-core
     pip install stable_baselines3==2.0.0
     ```
 
