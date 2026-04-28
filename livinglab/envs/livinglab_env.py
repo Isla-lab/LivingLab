@@ -860,8 +860,8 @@ class LivingLabEnv(gym.Env, Environment):
         observations['underground_temperature'] = self.heat_pump.kasuda_underground_temperature(t=self.doy)
 
         # Update with possible past observations
-        past_t = min(self.time_step - 1, 0) if past else self.time_step
-        ep_past_t = min(self.episode_time_step - 1, 0) if past else self.episode_time_step
+        past_t = max(self.time_step - 1, 0) if past else self.time_step
+        ep_past_t = max(self.episode_time_step - 1, 0) if past else self.episode_time_step
         observations.update({
             'cooling_demand': self.energy_simulation.cooling_demand[past_t] + abs(min(self.thermal_battery.energy_balance[ep_past_t], 0.0)),
             'thermal_battery_soc': self.thermal_battery.soc[ep_past_t],
