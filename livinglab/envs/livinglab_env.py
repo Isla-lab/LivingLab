@@ -801,8 +801,8 @@ class LivingLabEnv(gym.Env, Environment):
 
         Parameters
         ----------
-        :param episode_time_step: Maximum time step to retreive values for KPIs calculation.
-        :type episode_time_step: Optional[int]
+        :param time_step: Maximum time step to retreive values for KPIs calculation.
+        :type time_step: Optional[int]
 
         Returns
         ----------
@@ -810,8 +810,8 @@ class LivingLabEnv(gym.Env, Environment):
         :rtype: Dict[str, float]
         """
         time_step = self.episode_time_step if time_step is None else time_step
-        assert self.episode_start_time_step < time_step <= self.episode_end_time_step, \
-            f'Invalid time step (time_step={time_step} not in ({self.episode_start_time_step}, {self.episode_start_time_step}]).'
+        assert 0 < time_step < self.episode_length, \
+            f'Invalid time step (time_step={time_step} not in (0, {self.episode_length})).'
 
         kpis = {}
 
