@@ -718,7 +718,7 @@ class LivingLabEnv(gym.Env, Environment):
         # Retreive current observations
         demand = self.energy_simulation.cooling_demand[self.time_step]
         temperature = self.weather.outdoor_dry_bulb_temperature[self.time_step]
-        thermal_battery_output = min(self.thermal_battery.energy_balance[self.episode_time_step], 0.0)
+        thermal_battery_output = abs(min(self.thermal_battery.energy_balance[self.episode_time_step], 0.0))
 
         # Maximum possible heat pump output
         if isinstance(self.heat_pump, DualSourceHeatPump):
