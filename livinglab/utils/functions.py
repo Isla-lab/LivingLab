@@ -77,7 +77,7 @@ def extract_kasuda_parameters(path: str) -> Mapping[str, Union[int, float]]:
     t_ground = sol_air_temperature(t_air=t_air, g_tot=g_tot)
     t_mean = t_ground.mean()
     amplitude = (t_ground.max() - t_ground.min()) / 2
-    min_day = int(t_ground.argmin() / 24) # <- ASSUMPTION: hourly observations
+    min_day = int((t_ground.argmin() + 1) / 24) # <- ASSUMPTION: hourly observations
 
     return {'mean': t_mean, 'amplitude': amplitude, 't0': min_day}
 
