@@ -243,7 +243,11 @@ class PolicyGradient(BaseAlgo):
                 window_length=self._cfgs.logger_cfgs.window_lens,
             )
             self._logger.register_key(
-                'KPIs/Total Temperature Delta [°C]',
+                'KPIs/Minimum Temperature Delta [°C]',
+                window_length=self._cfgs.logger_cfgs.window_lens,
+            )
+            self._logger.register_key(
+                'KPIs/Maximum Temperature Delta [°C]',
                 window_length=self._cfgs.logger_cfgs.window_lens,
             )            
             self._logger.register_key(
@@ -251,30 +255,29 @@ class PolicyGradient(BaseAlgo):
                 window_length=self._cfgs.logger_cfgs.window_lens,
             )
             self._logger.register_key(
+                'KPIs/Ramping [kWh]',
+                window_length=self._cfgs.logger_cfgs.window_lens,
+            )
+            self._logger.register_key(
+                'KPIs/Average Daily Peak [kWh]',
+                window_length=self._cfgs.logger_cfgs.window_lens,
+            )
+            self._logger.register_key(
+                'KPIs/Average Global Peak [kWh]',
+                window_length=self._cfgs.logger_cfgs.window_lens,
+            )
+            self._logger.register_key(
                 'KPIs/Total Electricity Consumption [kWh]',
                 window_length=self._cfgs.logger_cfgs.window_lens,
-            )
-            self._logger.register_key(
-                'KPIs/Average Electricity Consumption [kWh]',
-                window_length=self._cfgs.logger_cfgs.window_lens,
-            )            
+            )        
             self._logger.register_key(
                 'KPIs/Total Electricity Consumption Cost [$]',
-                window_length=self._cfgs.logger_cfgs.window_lens,
-            )
-            self._logger.register_key(
-                'KPIs/Average Electricity Consumption Cost [$]',
                 window_length=self._cfgs.logger_cfgs.window_lens,
             )
             self._logger.register_key(
                 'KPIs/Total Electricity Consumption Emissions [kgCO2]',
                 window_length=self._cfgs.logger_cfgs.window_lens,
             )
-            self._logger.register_key(
-                'KPIs/Average Electricity Consumption Emissions [kgCO2]',
-                window_length=self._cfgs.logger_cfgs.window_lens,
-            )            
-
 
         self._logger.register_key('Train/Epoch')
         self._logger.register_key('Train/Entropy')
