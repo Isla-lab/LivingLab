@@ -38,14 +38,15 @@ class LivingLabOmnisafe(CMDP):
         # KPI name to wandb log
         self.READABLE_KPIS = {
             'discomfort': 'Discomfort [%]',
-            'indoor_dry_bulb_temperature_delta': 'Total Temperature Delta [°C]',
+            'min_indoor_dry_bulb_temperature_delta': 'Minimum Temperature Delta [°C]',
+            'max_indoor_dry_bulb_temperature_delta': 'Maximum Temperature Delta [°C]',
             'avg_indoor_dry_bulb_temperature_delta': 'Average Temperature Delta [°C]',
+            'ramping': 'Ramping [kWh]',
+            'avg_daily_peak': 'Average Daily Peak [kWh]',
+            'avg_global_peak': 'Average Global Peak [kWh]',
             'net_electricity_consumption': 'Total Electricity Consumption [kWh]',
-            'avg_net_electricity_consumption': 'Average Electricity Consumption [kWh]',
             'net_electricity_consumption_cost': 'Total Electricity Consumption Cost [$]',
-            'avg_net_electricity_consumption_cost': 'Average Electricity Consumption Cost [$]',
             'net_electricity_consumption_emissions': 'Total Electricity Consumption Emissions [kgCO2]',
-            'avg_net_electricity_consumption_emissions': 'Average Electricity Consumption Emissions [kgCO2]'
         }
 
         # Device

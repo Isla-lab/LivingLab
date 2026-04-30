@@ -2,7 +2,7 @@ from gymnasium.envs.registration import register
 
 register(
     id='LivingLab-v0',
-    entry_point='livinglab.envs:LivingLabEnv',
+    entry_point='livinglab.envs.livinglab_env:LivingLabEnv',
     kwargs={
         'sim_data_paths': {
             'energy_simulation': "datasets/citylearn_challenge_2023_phase_1/Building_1.csv",
@@ -17,7 +17,10 @@ register(
             'nominal_power': 4.12,
             'efficiency': 0.25,
             'mode': 'cooling',
-            'target_temperature': 8.0
+            'target_temperature': 8.0,
+            'tank_depth': 10.0,
+            'soil_alpha': 0.052,
+            'kasuda_data': "../data/datasets/citylearn_challenge_2023_phase_1/USA_TX_San.Antonio.Intl.AP.722530_TMY3.epw"
         },
         'thermal_battery_cfgs': {
             'capacity': 4.0,

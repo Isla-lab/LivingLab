@@ -1,6 +1,10 @@
 # Living Lab Digital Twin
 Official repository for the implementation of the digital twin of the **Living Lab** at the [National Research Council](https://www.pd.cnr.it/) of Padua.
 
+<div align="center">
+    <img src="misc/living_lab_energy_model.png" width="1000">
+</div>
+
 ## 1. 📋 Introduction
 Inspired by [CityLearn](https://github.com/citylearn-project/CityLearn) **LivingLab** is a modular and object oriented _Reinforcement Learning_ (**RL**) environment for intelligent building energy management for comfort maintenance.
 
@@ -35,6 +39,8 @@ LivingLab/
 │       └── rewards.py          # Modular reward calculation
 └── examples/                   # Example scripts and agent implementations
     └── init_env.py             # Random agent quickstart
+    └── train_sb3.py            # Training script with StableBaselines3
+    └── train_omnisafe.py       # Training script with Omnisafe
 ```
 
 ### 1.3 ⚙️ Installation
@@ -61,6 +67,7 @@ We recommend using a [Miniconda](https://www.anaconda.com/docs/getting-started/m
     
     # 2. Install utilities
     pip install ipywidgets
+    pip install ladybug-core
     pip install stable_baselines3==2.0.0
     ```
 

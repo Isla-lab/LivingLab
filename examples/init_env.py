@@ -3,8 +3,11 @@ import os
 import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import numpy as np
+from collections import defaultdict
+
 from livinglab.envs.livinglab_env import LivingLabEnv
-from livinglab.components.device import HeatPump, PVSystem
+from livinglab.components.device import DualSourceHeatPump, PVSystem
 from livinglab.components.battery import ThermalBattery
 
 
@@ -18,7 +21,7 @@ def init_env_manual() -> LivingLabEnv:
     pv_system_cfgs = config['pv_system_cfgs']
 
     # Initialize devices
-    heat_pump = HeatPump(**heat_pump_cfgs)
+    heat_pump = DualSourceHeatPump(**heat_pump_cfgs)
     thermal_battery = ThermalBattery(**thermal_battery_cfgs)
     pv_system = PVSystem(**pv_system_cfgs)
 
@@ -69,25 +72,50 @@ def info():
     env.close()
 
 
-def sanity_check():
-    env = init_env_json()
+def simple_dual_policy(obs):
+    t_air = obs['outdoor_dry_bulb_temperature']
+    t_ground = obs['underground_temperature']
 
-    n_episodes = 1
-    for _ in range(n_episodes):
+    if t_air <= t_ground:
+        action = [0.5, 0.0]
+    else:
+        action = [-0.5, 0.0]
+
+    return action
+
+
+def simulate(n_episodes: int, source: str):
+    assert source.lower() in ['air', 'water', 'dual']
+
+    env = init_env_json()
+    kpis_h= defaultdict(list)
+    for i in range(n_episodes):
         env.reset()
         while not env.terminated:
-            if env.episode_time_step % 2 == 0:
-                env.step(actions=[0.5, 1.0])
+            if source == 'Air':
+                env.step(actions=[0.5, 0.0])
+            elif source == 'Water':
+                env.step(actions=[-0.5, 0.0])
             else:
-                env.step(actions=[0.2, -1.0])
+                obs = env.observations(names=True)
+                action = simple_dual_policy(obs)
+                env.step(actions=action)
+            
+        kpis_h['reward'].append(env.info['reward']['sum'])
+        for k, v in env.info['kpis'].items():
+            kpis_h[k].append(v)
 
-        print(f'\n[EPISODE {env.episode_counter}-({env.episode_start_time_step}:{env.episode_end_time_step})] LivingLabEnv terminated successfully after {env.episode_length} time steps.')
-        for k, v in env.info.items():
-            print(f'- {k}: {v}')
+    print(f'\n=== RESULTS OVER {n_episodes} SIMULATION EPISODES with {source}-source Heat Pump ===')
+    print(f"- Average reward: {np.mean(kpis_h['reward']):.3f}")
+    print(f"- Average discomfort: {np.mean(kpis_h['discomfort']):.4f}")
+    print(f"- Average electricity consumption: {np.mean(kpis_h['net_electricity_consumption']):.3f}")
+
 
     env.close()
 
 
 if __name__ == '__main__':
-    info()
-    sanity_check()
+    info()    
+    simulate(n_episodes=10, source='Air')
+    simulate(n_episodes=10, source='Water')
+    simulate(n_episodes=10, source='Dual')

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from ladybug.epw import EPW
 
 from abc import ABC, abstractmethod
 from typing import Optional, Mapping, Union, Iterable, List
@@ -141,6 +142,7 @@ class Weather(TimeSeriesData):
     Parameters
     ----------
     :param path: Path to time series DataFrame.
+    :type path: str
     :param start_time_step: Time step to start reading variables.
     :type start_time_step: int, optional
     :param end_time_step: Time step to end reading variables.
