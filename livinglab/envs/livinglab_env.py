@@ -852,56 +852,6 @@ class LivingLabEnv(gym.Env, Environment):
 
         return kpis
 
-    def get_kpis_old(self, time_step: Optional[int]=None) -> Dict[str, float]:
-        """
-        Get the Key Performance Indicator values at a given `time_step`
-        (using the running `Environment.episode_time_step` if `None` is given).
-
-        Parameters
-        ----------
-        :param time_step: Maximum time step to retreive values for KPIs calculation.
-        :type time_step: Optional[int]
-
-        Returns
-        ----------
-        :return: a dictionary `{kpi: value}`
-        :rtype: Dict[str, float]
-        """
-        time_step = self.episode_time_step if time_step is None else time_step
-        assert 0 < time_step < self.episode_length, \
-            f'Invalid time step (time_step={time_step} not in (0, {self.episode_length})).'
-
-        kpis = {}
-
-        # Discomfort
-        lower_t, upper_t = self.episode_start_time_step, self.episode_start_time_step + time_step + 1
-        indoor_dry_bulb_temperature_delta = abs(
-            self.energy_simulation.indoor_dry_bulb_temperature[lower_t:upper_t] - 
-            self.energy_simulation.indoor_dry_bulb_temperature_cooling_set_point[lower_t:upper_t]
-        )
-        comfort_band = self.energy_simulation.comfort_band[lower_t:upper_t]
-        discomfort = (indoor_dry_bulb_temperature_delta > comfort_band).astype(np.int8)
-        kpis['discomfort'] = discomfort.mean().item()
-        kpis['indoor_dry_bulb_temperature_delta'] = indoor_dry_bulb_temperature_delta.sum().item()
-        kpis['avg_indoor_dry_bulb_temperature_delta'] = indoor_dry_bulb_temperature_delta.mean().item()
-
-        # Net electricity consumption
-        net_electricity_consumption = self.net_electricity_consumption[:time_step+1]
-        kpis['net_electricity_consumption'] = net_electricity_consumption.sum().item()
-        kpis['avg_net_electricity_consumption'] = net_electricity_consumption.mean().item()
-
-        # Net electricity consumption cost
-        net_electricity_consumption_cost = self.net_electricity_consumption_cost[:time_step+1]
-        kpis['net_electricity_consumption_cost'] = net_electricity_consumption_cost.sum().item()
-        kpis['avg_net_electricity_consumption_cost'] = net_electricity_consumption_cost.mean().item()
-
-        # Net electricity consumption emissions
-        net_electricity_consumption_emissions = self.net_electricity_consumption_emissions[:time_step+1]
-        kpis['net_electricity_consumption_emissions'] = net_electricity_consumption_emissions.sum().item()
-        kpis['avg_net_electricity_consumption_emissions'] = net_electricity_consumption_emissions.mean().item()
-
-        return kpis
-
     def _get_observations_data(self, past: bool=True) -> Mapping[str, Union[int, float]]:        
         # Current simulation data
         observations = {
