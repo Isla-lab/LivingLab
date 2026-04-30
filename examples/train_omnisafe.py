@@ -25,8 +25,8 @@ def parse_arguments():
 
     # Wandb logging
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
-    parser.add_argument('--project', type=str, required=True , help="Wandb project")
-    parser.add_argument('--entity', type=str, required=True , help="Wandb entity")
+    parser.add_argument('--project', type=str, nargs='?', help="Wandb project")
+    parser.add_argument('--entity', type=str, nargs='?', help="Wandb entity")
 
     return parser.parse_args()
 
@@ -51,8 +51,8 @@ def main(args):
         },
         'logger_cfgs': {
             'use_wandb': args.wandb,
-            'wandb_project': args.project,
-            'entity': args.entity,
+            'wandb_project': args.project if args.project is not None else 'None',
+            'entity': args.entity if args.entity is not None else 'None',
             'mode': 'online',
         },
        
