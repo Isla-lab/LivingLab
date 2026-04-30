@@ -3,7 +3,7 @@ import numpy as np
 from typing import Any, Optional, Union, Mapping
 
 from livinglab.base import Device
-from livinglab.utils.functions import extract_kasuda_parameters
+from livinglab.utils.functions import UtilsFunctions
 
 
 class ElectricDevice(Device):
@@ -53,7 +53,7 @@ class ElectricDevice(Device):
         :param enforce_polarity: Whether to consider only positive consumptions.
         :type enforce_polarity: bool
         """
-        assert not enforce_polarity or electricity_consumption >= 0.0, \
+        assert not enforce_polarity or electricity_consumption >= 0.0 or abs(electricity_consumption) < 1e-4, \
             f'Invalid electricity consumption value {electricity_consumption}. Must be >= 0.'
         self._electricity_consumption[self.episode_time_step] += electricity_consumption
 
@@ -213,7 +213,7 @@ class DualSourceHeatPump(HeatPump):
         self.soil_alpha = soil_alpha
 
         # Parameters for the Kasuda model
-        self.kasuda_params = extract_kasuda_parameters(path=kasuda_data)
+        self.kasuda_params = UtilsFunctions.extract_kasuda_parameters(path=kasuda_data)
 
         # Active source
         self.active_source = 'air'
