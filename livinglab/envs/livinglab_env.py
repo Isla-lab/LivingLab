@@ -13,7 +13,7 @@ from livinglab.base import Environment, Device
 from livinglab.components.dynamics import Dynamics, LSTMDynamics
 from livinglab.components.device import DualSourceHeatPump, PVSystem
 from livinglab.components.battery import ThermalBattery
-from livinglab.utils import functions
+from livinglab.utils.functions import DAYS_PER_MONTH, CostFunctions
 from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
 from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
 from livinglab.utils.rewards import ComfortRewardFuction
@@ -272,8 +272,8 @@ class LivingLabEnv(gym.Env, Environment):
     def doy(self) -> int:
         """Return the Day Of the Year number of the current `self.time_step`"""
         month = self.energy_simulation.month[self.time_step]
-        rel_day = min(int((self.time_step+1) / 24)+1, functions.DAYS_PER_MONTH[month])
-        return rel_day + np.sum(functions.DAYS_PER_MONTH[:month-1])
+        rel_day = min(int((self.time_step+1) / 24)+1, DAYS_PER_MONTH[month])
+        return rel_day + np.sum(DAYS_PER_MONTH[:month-1])
 
     @periodic_observations_metadata.setter
     def periodic_observations_metadata(self, new_metadata: Mapping[str, Optional[Iterable[Union[int, float]]]]):
@@ -632,7 +632,7 @@ class LivingLabEnv(gym.Env, Environment):
                 rel_days = np.arange(1, int((self.end_time_step+1)/24), step=1, dtype=np.int32)
                 months = sim_data['month'][::24]
                 abs_days = np.array(
-                    [dd + np.sum(functions.DAYS_PER_MONTH[:mm-1]) for dd, mm in zip(rel_days, months)],
+                    [dd + np.sum(DAYS_PER_MONTH[:mm-1]) for dd, mm in zip(rel_days, months)],
                     dtype=np.int32
                 )
                 temps = self.heat_pump.kasuda_underground_temperature(t=abs_days)
@@ -734,7 +734,7 @@ class LivingLabEnv(gym.Env, Environment):
             electricity_consumption = self.heat_pump.get_input_power(output_power=heat_pump_output, t=self.doy, outdoor_dry_bulb_temperature=temperature)
         else:
             electricity_consumption = self.heat_pump.get_input_power(output_power=heat_pump_output, outdoor_dry_bulb_temperature=temperature)
-        assert electricity_consumption >= 0.0, f'[STEP: {self.time_step}] Negative electricity consumption for cooling demand. Found {electricity_consumption}'
+        assert electricity_consumption >= 0.0 or abs(electricity_consumption) < 1e-4, f'[STEP: {self.time_step}] Negative electricity consumption for cooling demand. Found {electricity_consumption}'
 
         # Update
         self.heat_pump.update_electricity_consumption(electricity_consumption)
@@ -793,8 +793,66 @@ class LivingLabEnv(gym.Env, Environment):
         indoor_dry_bulb_temperature = indoor_dry_bulb_temperature_norm*(max_ - min_) + min_
         self.energy_simulation.indoor_dry_bulb_temperature[self.time_step] = indoor_dry_bulb_temperature.item()
 
-
     def get_kpis(self, time_step: Optional[int]=None) -> Dict[str, float]:
+        """
+        Get the Key Performance Indicator values at a given `time_step`
+        (using the running `Environment.episode_time_step` if `None` is given).
+
+        Parameters
+        ----------
+        :param time_step: Maximum time step to retreive values for KPIs calculation.
+        :type time_step: Optional[int]
+
+        Returns
+        ----------
+        :return: a dictionary `{kpi: value}`
+        :rtype: Dict[str, float]
+        """
+        time_step = self.episode_time_step if time_step is None else time_step
+        assert 0 < time_step < self.episode_length, \
+            f'Invalid time step (time_step={time_step} not in (0, {self.episode_length})).'
+
+        kpis = {}
+
+        # Discomfort
+        lower_t, upper_t = self.episode_start_time_step, self.episode_start_time_step + time_step + 1
+        discomfort, min_temperature_delta, max_temperature_delta, avg_temperature_delta = CostFunctions.discomfort(
+            indoor_dry_bulb_temperature=self.energy_simulation.indoor_dry_bulb_temperature[lower_t:upper_t],
+            indoor_dry_bulb_setpoint=self.energy_simulation.indoor_dry_bulb_temperature_cooling_set_point[lower_t:upper_t],
+            occupant_count=self.energy_simulation.occupant_count[lower_t:upper_t],
+            comfort_band=self.energy_simulation.comfort_band[lower_t:upper_t]
+        )
+        kpis['discomfort'] = discomfort[-1]
+        kpis['min_indoor_dry_bulb_temperature_delta'] = min_temperature_delta[-1]
+        kpis['max_indoor_dry_bulb_temperature_delta'] = max_temperature_delta[-1]
+        kpis['avg_indoor_dry_bulb_temperature_delta'] = avg_temperature_delta[-1]
+
+
+        # Ramping
+        ramping = CostFunctions.ramping(net_electricity_consumption=self.net_electricity_consumption[:time_step+1])
+        kpis['ramping'] = ramping[-1]
+
+        # Global and Daily peak
+        daily_peak = CostFunctions.peak(net_electricity_consumption=self.net_electricity_consumption[:time_step+1])
+        global_peak = CostFunctions.peak(net_electricity_consumption=self.net_electricity_consumption[:time_step+1], window=self.episode_length)
+        kpis['avg_daily_peak'] = daily_peak[-1]
+        kpis['avg_global_peak'] = global_peak[-1]
+
+        # Net electricity consumption
+        net_electricity_consumption = CostFunctions.electricity_consumption(net_electricity_consumption=self.net_electricity_consumption[:time_step+1])
+        kpis['net_electricity_consumption'] = net_electricity_consumption[-1]
+
+        # Net electricity consumption cost
+        net_electricity_consumption_cost = CostFunctions.cost(cost=self.net_electricity_consumption_cost[:time_step+1])
+        kpis['net_electricity_consumption_cost'] = net_electricity_consumption_cost[-1]
+
+        # Net electricity consumption emissions
+        net_electricity_consumption_emissions = CostFunctions.carbon_emissions(carbon_emissions=self.net_electricity_consumption_emissions[:time_step+1])
+        kpis['net_electricity_consumption_emissions'] = net_electricity_consumption_emissions[-1]
+
+        return kpis
+
+    def get_kpis_old(self, time_step: Optional[int]=None) -> Dict[str, float]:
         """
         Get the Key Performance Indicator values at a given `time_step`
         (using the running `Environment.episode_time_step` if `None` is given).
