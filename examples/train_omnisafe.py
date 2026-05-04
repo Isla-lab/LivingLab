@@ -57,11 +57,19 @@ def main(args):
         },
        
         # --- LIVINGLAB KEY ARGUMENTS ---
-        'env_cfgs': env_cfgs
+        'env_cfgs': {
+            **env_cfgs,
+            'cost_fn': {
+                'name': 'electricity_consumption',
+                'kwargs': {
+                    'exponent': 2.0
+                }
+            }
+        }
     }
 
     # 3. Define and train the agent
-    agent = omnisafe.Agent('PPO', 'LivingLab-v0', custom_cfgs=custom_cfgs)
+    agent = omnisafe.Agent('PPOLag', 'LivingLab-v0', custom_cfgs=custom_cfgs)
     agent.learn()
 
 
