@@ -168,7 +168,7 @@ class Environment(ABC):
         """
         self.episode_counter += 1
         self.episode_time_step = 0
-        self.episode_start_time_step = (self.episode_counter % self.simulation_episodes) * self.episode_length
+        self.episode_start_time_step = self.start_time_step + (self.episode_counter % self.simulation_episodes) * self.episode_length
         self.episode_end_time_step = self.episode_start_time_step + self.episode_length - 1
 
 
