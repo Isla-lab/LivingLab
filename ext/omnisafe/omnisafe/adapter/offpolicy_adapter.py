@@ -141,7 +141,7 @@ class OffPolicyAdapter(OnlineAdapter):
                     self._log_metrics(logger, idx)
                     self._reset_log(idx)
 
-                    if self._env_id == 'CityLearn-v0':                            
+                    if self._env_id in ['CityLearn-v0', 'LivingLab-v0']:                            
                         for kpi, value in info['final_info'].items():
                             logger.store({f'KPIs/{kpi}': value})
 
