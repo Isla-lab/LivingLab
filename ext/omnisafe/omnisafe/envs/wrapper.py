@@ -510,14 +510,14 @@ class ActionScale(Wrapper):
 
         # Check if we are dealing with citylearn-type environments
         is_citylearn = False
-        try: # Training
-            if self._env._env._env.type in ['LivingLab', 'CityLearn']:
-                is_citylearn = True
-                cl_env = self._env._env._env
-        except AttributeError: # Evaluation
-            if self._env._env.type in ['LivingLab', 'CityLearn']:
-                is_citylearn = True
+        if self._env.type in ['LivingLab', 'CityLearn']:
+            try: # Training
                 cl_env = self._env._env
+                is_citylearn = True
+                while cl_env.__class__.__name__ not in ['LivingLabOmnisafe', 'CityLearnOmnisafe']:
+                    cl_env = cl_env._env 
+            except AttributeError: # Evaluation
+                raise TypeError(f'No valid env class associated to {self._env.type}.')
 
         if is_citylearn:
             action = action.cpu()
