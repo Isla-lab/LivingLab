@@ -33,8 +33,8 @@ class LivingLabOmnisafe(CMDP):
         self.type = 'LivingLab'
 
         # Cost function
-        cost_cfgs = kwargs.pop('cost_fn')
-        self._cost_fn = CostFunction(cost_cfgs['name'])
+        cost_cfgs = kwargs.pop('cost_fn', {})
+        self._cost_fn = CostFunction(cost_cfgs.get('name', None))
         self._cost_args = cost_cfgs.get('kwargs', {})
 
         # Env info
@@ -147,7 +147,7 @@ class CostFunction:
 
     @cost_fn.setter
     def cost_fn(self, new_fn: str):
-        self._cost_fn = getattr(self, new_fn)
+        self._cost_fn = getattr(self, new_fn) if new_fn is not None else None
 
     def ramping(self, exponent: float) -> float:
         """
@@ -170,7 +170,7 @@ class CostFunction:
         
         return ramping
 
-    def electricity_consumption(self, exponent: float) -> float:
+    def electricity_consumption(self, threshold: float, scale: float=1.0) -> float:
         """
         Return the electricity consumption.
 
@@ -184,7 +184,7 @@ class CostFunction:
         :return: the net electricity consumption at `self.env.episode_time_step-1`
         :rtype: float
         """
-        return max(0.0, self.env.net_electricity_consumption[self.env.episode_time_step-1])**exponent
+        return float(self.env.net_electricity_consumption[self.env.episode_time_step-1] > threshold)*scale
     
     def cost(self, exponent: float) -> float:
         """
@@ -218,7 +218,7 @@ class CostFunction:
         """
         return max(0.0, self.env.net_electricity_consumption_emissions[self.env.episode_time_step-1])**exponent
     
-    def discomfort(self, exponent: float) -> float:        
+    def discomfort(self, scale: float=1.0) -> float:        
         """
         Return the absoulute difference between the indoor dry-bulb temperature and the setpoint.
 
@@ -238,7 +238,7 @@ class CostFunction:
         comfort_band = self.env.energy_simulation.comfort_band[self.env.time_step-1]
 
         temp_delta = abs(indoor_dry_bulb_temperature - indoor_dry_bulb_set_point)
-        cost = temp_delta**exponent if temp_delta >= comfort_band else temp_delta
+        cost = float(temp_delta > comfort_band)*scale
         cost = 0.0 if occupant_count == 0 else cost
 
         return cost
