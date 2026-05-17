@@ -16,7 +16,7 @@ from livinglab.components.battery import ThermalBattery
 from livinglab.utils.functions import DAYS_PER_MONTH, CostFunctions
 from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
 from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
-from livinglab.utils.rewards import ComfortRewardFuction
+from livinglab.utils.rewards import ComfortRewardFuction, SolarPenaltyRewardFunction, SolarPenaltyAndComfortRewardFunction
 
 
 class LivingLabEnv(gym.Env, Environment):
@@ -101,7 +101,7 @@ class LivingLabEnv(gym.Env, Environment):
         self.action_space = self.estimate_action_space()
 
         # Reward Function
-        self.reward_fn = ComfortRewardFuction()
+        self.reward_fn = ComfortRewardFuction(env_metadata=self.env_metadata)
 
     @staticmethod
     def from_json(config: Union[str, Path, Mapping[str, Any]], update: Optional[Mapping[str, Any]]=None, init: bool=True) -> Union[Self, Mapping[str, Any]]:
@@ -242,6 +242,16 @@ class LivingLabEnv(gym.Env, Environment):
     def action_space(self) -> spaces.Box:
         """Environment's action space."""
         return self._action_space
+    
+    @property
+    def env_metadata(self) -> Mapping[str, Any]:
+        return {
+            'active_observations': self.active_observations,
+            'action_names': self.action_names,
+            'heat_pump': self.heat_pump.get_metadata(),
+            'thermal_battery': self.thermal_battery.get_metadata(),
+            'pv_system': self.pv_system.get_metadata(),
+        }
     
     @property
     def episode_rewards(self) -> np.ndarray:

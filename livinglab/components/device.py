@@ -62,6 +62,12 @@ class ElectricDevice(Device):
         super().reset()
         self._electricity_consumption = np.zeros(self.episode_length, dtype=np.float32)
 
+    def get_metadata(self) -> Mapping[str, Any]:
+        return {
+            **super().get_metadata(),
+            'nominal_power': self.nominal_power
+        }
+
 
 class HeatPump(ElectricDevice):
     """
@@ -176,6 +182,13 @@ class HeatPump(ElectricDevice):
         :rtype: float
         """
         return output_power/self.get_cop(outdoor_dry_bulb_temperature)
+    
+    def get_metadata(self) -> Mapping[str, Any]:
+        return {
+            **super().get_metadata(),
+            'mode': self.mode,
+            'target_temperature': self.target_temperature
+        }
     
 
 class DualSourceHeatPump(HeatPump):
@@ -325,6 +338,16 @@ class DualSourceHeatPump(HeatPump):
             output_power=output_power,
             outdoor_dry_bulb_temperature=outdoor_source_temperature
         )
+    
+    def get_metadata(self) -> Mapping[str, Any]:
+        return {
+            **super().get_metadata(),
+            'tank_depth': self.tank_depth,
+            'soil_aplha': self.soil_alpha,
+            'kasuda_params': {
+                **self.kasuda_params
+            }
+        }
         
 
 class PVSystem(ElectricDevice):

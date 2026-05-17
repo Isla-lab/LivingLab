@@ -161,3 +161,13 @@ class ThermalBattery(Device):
         self._soc = np.zeros(self.episode_length, dtype=np.float32)
         self._soc[0] = self.initial_soc
         self._energy_balance = np.zeros(self.episode_length, dtype=np.float32)
+
+    def get_metadata(self) -> Mapping[str, Any]:
+        return {
+            **super().get_metadata(),
+            'capacity': self.capacity,
+            'intial_soc': self.initial_soc,
+            'loss_coef': self.loss_coef,
+            'max_input_power': self.max_input_power,
+            'max_input_power': self.max_output_power,
+        }
