@@ -16,7 +16,7 @@ from livinglab.components.battery import ThermalBattery
 from livinglab.utils.functions import DAYS_PER_MONTH, CostFunctions
 from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
 from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
-from livinglab.utils.rewards import ComfortRewardFuction, SolarPenaltyRewardFunction, SolarPenaltyAndComfortRewardFunction
+from livinglab.utils import rewards
 
 
 class LivingLabEnv(gym.Env, Environment):
@@ -60,6 +60,7 @@ class LivingLabEnv(gym.Env, Environment):
             pv_system_cfgs: Union[PVSystem, Mapping[str, Any]],
             dynamics_cfgs: Union[Dynamics, Mapping[str, Any]],
             periodic_normalization: bool,
+            reward_fn: Mapping[str, Any],
             base_path: Union[str, Path] = '../data',
             active_observations: Optional[Iterable[str]]=[],
             inactive_observations: Optional[Iterable[str]]=[],
@@ -101,7 +102,9 @@ class LivingLabEnv(gym.Env, Environment):
         self.action_space = self.estimate_action_space()
 
         # Reward Function
-        self.reward_fn = ComfortRewardFuction(env_metadata=self.env_metadata)
+        reward_cls = getattr(rewards, reward_fn['class'])
+        reward_attrs = reward_fn.get('attributes', {})
+        self.reward_fn = reward_cls(env_metadata=self.env_metadata, **reward_attrs)
 
     @staticmethod
     def from_json(config: Union[str, Path, Mapping[str, Any]], update: Optional[Mapping[str, Any]]=None, init: bool=True) -> Union[Self, Mapping[str, Any]]:
