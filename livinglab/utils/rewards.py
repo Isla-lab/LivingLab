@@ -1,5 +1,7 @@
+import numpy as np
+
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Union, Mapping
+from typing import Any, Optional, Union, Tuple, List, Mapping
 
 
 class RewardFunction(ABC):
@@ -36,7 +38,7 @@ class RewardFunction(ABC):
         pass
 
 
-class ComfortRewardFuction(RewardFunction):
+class ComfortRewardFunction(RewardFunction):
     """
     Thermal comfort reward function.
 
@@ -79,13 +81,98 @@ class ComfortRewardFuction(RewardFunction):
 
     def calculate(self, observations: Mapping[str, Union[int, float]]) -> float:
         # Retrieve required observations
+        hp_mode = self.env_metadata['heat_pump']['mode']
         indoor_dry_bulb_temperature = observations['indoor_dry_bulb_temperature']
-        indoor_dry_bulb_temperature_cooling_set_point = observations['indoor_dry_bulb_temperature_cooling_set_point']
+        indoor_dry_bulb_temperature_set_point = observations[f'indoor_dry_bulb_temperature_{hp_mode}_set_point']
         comfort_band = observations.get('comfort_band', None) if self.comfort_band is None else self.comfort_band
         assert comfort_band is not None, f'Comfort band is required for {self.__class__.__name__}.calculate(). None has been provided.'
 
+        # Compute temperature delta
+        if hp_mode == 'cooling':
+            temp_delta = indoor_dry_bulb_temperature - indoor_dry_bulb_temperature_set_point
+        else:
+            temp_delta = indoor_dry_bulb_temperature_set_point - indoor_dry_bulb_temperature
+
         # Compute reward
-        temp_delta = abs(indoor_dry_bulb_temperature - indoor_dry_bulb_temperature_cooling_set_point)
-        reward = -(temp_delta**self.exponent) if temp_delta >= comfort_band else -temp_delta
+        if -comfort_band <= temp_delta <= 0.0:
+            reward = 0.0
+        else:
+            temp_delta = abs(temp_delta)
+            reward = -(temp_delta**self.exponent) if temp_delta > comfort_band else -temp_delta
+
+        return reward
+    
+    
+class NetElectricityConsumptionFunction(RewardFunction):
+    """
+    Net electricity consumption reward.
+
+    This reward is designed to penalize large values of electricity imported from the grid.
+        
+    Parameters
+    ----------
+    :param env_metadata: Static information about the environment.
+    :type env_metadata: Mapping[str, Any]
+    """
+    def __init__(self, env_metadata: Mapping[str, Any]):
+        super().__init__(env_metadata)
+
+    def calculate(self, observations: Mapping[str, Union[int, float]]) -> float:
+
+        # Electricity consumption
+        e = observations['net_electricity_consumption']
+            
+        reward = -max(0.0, e)
+        return reward
+        
+        
+class NetElectricityConsumptionAndComfortRewardFunction(RewardFunction):
+    """
+    Addition of `NetElectricityConsumptionReward` and `ComfortReward`.
+
+    Parameters
+    ----------
+    :param env_metadata: Static information about the environment.
+    :type env_metadata: Mapping[str, Any]
+    :param env_metadata: Static information about the environment.
+    :type env_metadata: Mapping[str, Any]
+    :param exponent: Exponent to raise the temperature difference to if exceeding `comfort_band`.
+    :type exponent: Optional[float] 
+    :param coefficients: Coefficents for `NetElectricityConsumption` and `ComfortReward` values respectively.
+    :type coefficients: Tuple[float], default (1.0, 1.0)
+    """
+    
+    def __init__(self, env_metadata: Mapping[str, Any], comfort_band: Optional[float]=None, exponent: Optional[float]=None, coefficients: Optional[Tuple[float]]=None):
+        self.__functions: List[RewardFunction] = [
+            NetElectricityConsumptionFunction(env_metadata=env_metadata),
+            ComfortRewardFunction(env_metadata=env_metadata, comfort_band=comfort_band, exponent=exponent)
+        ]
+        super().__init__(env_metadata)
+        self.coefficients = coefficients
+
+    @property
+    def coefficients(self) -> Tuple:
+        return self.__coefficients
+    
+    @RewardFunction.env_metadata.setter
+    def env_metadata(self, env_metadata: Mapping[str, Any]) -> Mapping[str, Any]:
+        RewardFunction.env_metadata.fset(self, env_metadata)
+
+        for f in self.__functions:
+            f.env_metadata = self.env_metadata
+    
+    @coefficients.setter
+    def coefficients(self, coefficients: Tuple):
+        coefficients = [1.0]*len(self.__functions) if coefficients is None else coefficients
+        assert len(coefficients) == len(self.__functions), f'{type(self).__name__} needs {len(self.__functions)} coefficients.' 
+        self.__coefficients = coefficients
+
+    def calculate(self, observations: Mapping[str, Union[int, float]]) -> float:
+        # Compute each reward 
+        reward = np.array([f.calculate(observations) for f in self.__functions], dtype=np.float32)
+        
+        # Scale rewards by coefficients and sum
+        reward = reward*self.coefficients
+        reward = reward.sum(dtype=np.float32).item()
 
         return reward
