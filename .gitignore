@@ -3,3 +3,8 @@
 
 # Omnisafe runs
 **/runs/*
+
+# Experiments and wandb
+**/tea_debug.log
+**/wandb/*
+**/experiments/*
