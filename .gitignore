@@ -4,6 +4,9 @@
 # Omnisafe runs
 **/runs/*
 
+# Installation artifacts
+**/*.egg-info/*
+
 # Experiments and wandb
 **/tea_debug.log
 **/wandb/*
