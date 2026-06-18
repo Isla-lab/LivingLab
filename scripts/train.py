@@ -1,6 +1,3 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # Omnisafe
 from ext import omnisafe
 
@@ -8,6 +5,7 @@ from ext import omnisafe
 from livinglab.envs.livinglab_env import LivingLabEnv
 
 # Utils
+import os
 import torch
 import argparse
 import yaml, json

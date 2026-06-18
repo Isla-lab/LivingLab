@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "livinglab"
+version = "0.1.0"
+description = "LivingLab: Intelligent Energy Management RL Environment"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{ name = "ISLa Lab" }]
+dependencies = [
+    "gymnasium>=0.28.1",
+    "numpy",
+    "pandas",
+    "ladybug-core",
+    "tabulate",
+    "ipywidgets",
+    "torch==2.8.0",             #
+    "torchvision==0.23.0",      # -> compatability with Omnisafe
+    "stable-baselines3==2.0.0", #
+    # Add any other required packages here
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["livinglab*", "ext*"]
+
+[tool.setuptools.package-data]
+livinglab = ["*"]

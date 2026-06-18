@@ -1,6 +1,3 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # LivingLab
 from livinglab.envs.livinglab_env import LivingLabEnv
 
