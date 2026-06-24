@@ -7,6 +7,9 @@
 # Installation artifacts
 **/*.egg-info/*
 
+# Bash scripts
+**/*.sh
+
 # Experiments and wandb
 **/tea_debug.log
 **/wandb/*
