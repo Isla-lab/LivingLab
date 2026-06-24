@@ -137,11 +137,11 @@ class ComfortRBC(HourRBC):
             # Above the set-point
             if hot_delta > 0:
                 if hot_delta > self.comfort_band: # <- Too hot
-                    scheduled_actions[hp_idx] = 0.8*np.sign(scheduled_actions[hp_idx])
+                    scheduled_actions[hp_idx] = 0.35*np.sign(scheduled_actions[hp_idx])
                     if thm_soc > 0.1:
                         scheduled_actions[thm_idx] = min(scheduled_actions[thm_idx], -thm_soc/2)
                 else: # <- Hot within the band
-                    scheduled_actions[hp_idx] = 0.2*np.sign(scheduled_actions[hp_idx])
+                    scheduled_actions[hp_idx] = 0.3*np.sign(scheduled_actions[hp_idx])
                     if thm_soc > 0.1:
                         scheduled_actions[thm_idx] = min(scheduled_actions[thm_idx], -thm_soc/3)
 
@@ -149,7 +149,7 @@ class ComfortRBC(HourRBC):
             else:
                 temp_delta = outdoor_dry_bulb_temperature - indoor_dry_bulb_temperature
                 if temp_delta > 0: # Outdoor temperature affects indoors
-                    scheduled_actions[hp_idx] = 0.3*np.sign(scheduled_actions[hp_idx])
+                    scheduled_actions[hp_idx] = 0.15*np.sign(scheduled_actions[hp_idx])
                 else:
                     scheduled_actions[hp_idx] = 0.0
 
