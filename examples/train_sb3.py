@@ -1,6 +1,3 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # SB3
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback

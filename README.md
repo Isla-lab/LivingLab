@@ -50,29 +50,25 @@ We recommend using a [Miniconda](https://www.anaconda.com/docs/getting-started/m
     ```bash
     git clone https://github.com/Isla-lab/LivingLab.git
     ```
-2. Setup [Omnisafe](https://github.com/PKU-Alignment/omnisafe):
+2. Create and activate a miniconda environment:
     ```bash
-    # 1. Create the conda environment
-    cd LivingLab/ext/omnisafe
-    conda env create --file conda-recipe.yaml
-
-    # 2. Install omnisafe
+    conda create -n livinglab python==3.10 -y
+    conda activate livinglab
+    ```
+3. Setup `LivingLab`:
+    ```bash
+    cd LivingLab/
+    pip install -e .
+    ```
+4. Setup [Omnisafe](https://github.com/PKU-Alignment/omnisafe):
+    ```bash
+    cd ext/omnisafe
     conda activate safe-livinglab
     pip install -e .
     ```
-3. Update and install additional libraries
-    ```bash
-    # 1. Update torch and torchvision
-    pip install torch==2.8.0 torchvision==0.23.0
-    
-    # 2. Install utilities
-    pip install ipywidgets
-    pip install ladybug-core
-    pip install stable_baselines3==2.0.0
-    ```
 
 ## 2. 🚀 Quick Start
-You can easily use the environment by importing it and and calling calling `.gym.make()`.
+You can easily use the environment by importing it and and calling calling `gym.make()`.
 ```python
 import gymnasium as gym
 import livinglab # Registers the environment with default configurations

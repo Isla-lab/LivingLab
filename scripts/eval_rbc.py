@@ -1,17 +1,13 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # LivingLab
 from livinglab.envs.livinglab_env import LivingLabEnv
 
 # Utils
+import os
 import wandb
-import json, yaml
+import json
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
-from collections import defaultdict
-from glob import glob
 from tabulate import tabulate
 from agent import HourRBC, ComfortRBC
 
@@ -50,7 +46,9 @@ def parse_arguments():
 
     # LivingLab configs
     parser.add_argument('--agent', type=str, default='HourRBC', help="RBC agent to evaluete")
-    parser.add_argument('--env_cfgs', type=str, default='./experiments/PPO_comfort_reward/env_cfgs/test_cfgs.json', help="Path to the configurations of the environment")
+    parser.add_argument('--env_cfgs', type=str, default='./config/default.json', help="Path to the configurations of the environment")
+    parser.add_argument('--start', type=int, nargs='?', help="Initial simulation time step")
+    parser.add_argument('--end', type=int, nargs='?', help="Ending simulation time step")
 
     # Wandb logging    
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
@@ -115,9 +113,11 @@ def compare_temperature(args, results):
     bx1.plot(np.zeros_like(cooling_demand), color='black', linestyle='--')
     bx1.grid('on')
 
-    os.makedirs(f'./experiments/{args.agent}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{args.agent}/figs/indoor_dry_bulb_temperature.png', format='png')
-    plt.show()
+    name = args.agent if args.name is None else args.name
+    env_name = args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'./experiments/{name}/{env_name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/{env_name}/figs/indoor_dry_bulb_temperature.png', format='png')
+
 
 def compare_hp_usage(args, results):
     # Outdoor temperatures
@@ -164,9 +164,10 @@ def compare_hp_usage(args, results):
     bx.legend()
     bx.grid('on')
 
-    os.makedirs(f'./experiments/{args.agent}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{args.agent}/figs/mshp_usage.png', format='png')
-    plt.show()
+    name = args.agent if args.name is None else args.name
+    env_name = args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'./experiments/{name}/{env_name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/{env_name}/figs/mshp_usage.png', format='png')
 
 
 def compare_thermal_battery(args, results):
@@ -188,9 +189,10 @@ def compare_thermal_battery(args, results):
     bx2.set_ylim(ymin=-0.05, ymax=1.05)
     bx2.yaxis.label.set_color('xkcd:orange')
 
-    os.makedirs(f'./experiments/{args.agent}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{args.agent}/figs/thermal_battery.png', format='png')
-    plt.show()
+    name = args.agent if args.name is None else args.name
+    env_name = args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'./experiments/{name}/{env_name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/{env_name}/figs/thermal_battery.png', format='png')
 
 
 def log_kpis(args, results):
@@ -208,7 +210,7 @@ def log_kpis(args, results):
     run = wandb.init(
         entity=args.entity,
         project='LivingLab_RL_eval_v3' if args.project is None else args.project,
-        name=args.agent
+        name=args.agent if args.name is None else args.name
     )
 
     # Log results
@@ -221,7 +223,13 @@ def log_kpis(args, results):
 
 def eval(args, env_cfgs):
     # Load the LivingLabEnv given the configurations
-    env = LivingLabEnv(**env_cfgs)
+    env = LivingLabEnv.from_json(config=env_cfgs)
+
+    # Modify start and end time step if provided
+    if args.start is not None:
+        env.start_time_step = args.start
+    if args.end is not None:
+        env.end_time_step = args.end
 
     # Load the agent
     if args.agent == 'HourRBC':
@@ -291,5 +299,5 @@ if __name__ == '__main__':
 
     compare_temperature(args, results)
     compare_hp_usage(args, results)
-    # if args.wandb:
-    #     log_kpis(args, results)
+    if args.wandb:
+        log_kpis(args, results)

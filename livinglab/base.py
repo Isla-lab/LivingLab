@@ -101,6 +101,8 @@ class Environment(ABC):
                     f'Invalid simulation start/end steps (start={new_step} >= end={self._end_time_step}).'
             
         self._start_time_step = new_step
+        if hasattr(self, '_episode_length'):
+            self.episode_length = min(self._episode_length, (self._end_time_step - self._start_time_step) + 1)
 
     @end_time_step.setter
     def end_time_step(self, new_step: Optional[int]):
@@ -110,6 +112,8 @@ class Environment(ABC):
                     f'Invalid simulation start/end steps (start={self._start_time_step} >= end={new_step}).'
         
         self._end_time_step = new_step
+        if hasattr(self, '_episode_length'):
+            self.episode_length = min(self._episode_length, (self._end_time_step - self._start_time_step) + 1)
 
     @episode_length.setter
     def episode_length(self, new_len: Optional[int]):

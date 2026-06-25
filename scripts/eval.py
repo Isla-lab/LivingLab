@@ -1,11 +1,9 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # LivingLab
 from livinglab.envs.livinglab_env import LivingLabEnv
 from livinglab.utils.wrappers import NormalizedSpaceWrapper
 
 # Utils
+import os
 import wandb
 import json, yaml
 import argparse
@@ -51,6 +49,9 @@ def parse_arguments():
 
     # LivingLab configs
     parser.add_argument('--exp_dir', type=str, default='./experiments/PPOLag_net_consumption_reward_discomfort_cost', help="Path to the experiment to evaluate")
+    parser.add_argument('--env_cfgs', type=str, nargs='?', help="Path to the JSON config file")
+    parser.add_argument('--start', type=int, nargs='?', help="Initial simulation time step")
+    parser.add_argument('--end', type=int, nargs='?', help="Ending simulation time step")
 
     # Wandb logging    
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
@@ -126,9 +127,9 @@ def compare_temperature(args, results):
     bx1.plot(np.zeros_like(avg_demand), color='black', linestyle='--')
     bx1.grid('on')
 
-    os.makedirs(f'{args.exp_dir}/figs', exist_ok=True)
-    fig.savefig(f'{args.exp_dir}/figs/indoor_dry_bulb_temperature.png', format='png')
-    plt.show()
+    env_name = 'test' if args.env_cfgs is None else args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'{args.exp_dir}/figs/{env_name}', exist_ok=True)
+    fig.savefig(f'{args.exp_dir}/figs/{env_name}/indoor_dry_bulb_temperature.png', format='png')
 
 
 def compare_hp_usage(args, results):
@@ -185,9 +186,9 @@ def compare_hp_usage(args, results):
     bx.legend()
     bx.grid('on')
 
-    os.makedirs(f'{args.exp_dir}/figs', exist_ok=True)
-    fig.savefig(f'{args.exp_dir}/figs/mshp_usage.png', format='png')
-    plt.show()
+    env_name = 'test' if args.env_cfgs is None else args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'{args.exp_dir}/figs/{env_name}', exist_ok=True)
+    fig.savefig(f'{args.exp_dir}/figs/{env_name}/mshp_usage.png', format='png')
 
 
 def compare_thermal_battery(args, results):
@@ -210,10 +211,10 @@ def compare_thermal_battery(args, results):
     bx2.set_ylabel('SoC [%]')
     bx2.set_ylim(ymin=-0.05, ymax=1.05)
     bx2.yaxis.label.set_color('xkcd:orange')
-
-    os.makedirs(f'{args.exp_dir}/figs', exist_ok=True)
-    fig.savefig(f'{args.exp_dir}/figs/thermal_battery.png', format='png')
-    plt.show()
+    
+    env_name = 'test' if args.env_cfgs is None else args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'{args.exp_dir}/figs/{env_name}', exist_ok=True)
+    fig.savefig(f'{args.exp_dir}/figs/{env_name}/thermal_battery.png', format='png')
 
 
 def log_kpis(args, results):
@@ -248,9 +249,21 @@ def log_kpis(args, results):
     run.finish()
 
 
-def eval(args, env_cfgs, seed):
+def eval(args, seed):
     # Load the LivingLabEnv given the configurations
-    env = LivingLabEnv(**env_cfgs)
+    if args.env_cfgs is None:
+        with open(f'{args.exp_dir}/env_cfgs/test_cfgs.json', 'r') as f:
+            env_cfgs = json.load(f)
+        env = LivingLabEnv(**env_cfgs)
+    else:
+        env = LivingLabEnv.from_json(config=args.env_cfgs)
+
+    # Modify start and end time step if provided
+    if args.start is not None:
+        env.start_time_step = args.start
+    if args.end is not None:
+        env.end_time_step = args.end
+   
     env = NormalizedSpaceWrapper(env)
 
     # Load the agent
@@ -308,13 +321,9 @@ def eval(args, env_cfgs, seed):
 if __name__ == '__main__':
     args = parse_arguments()
 
-    # Load the test configurations
-    with open(f'{args.exp_dir}/env_cfgs/test_cfgs.json', 'r') as f:
-        env_cfgs = json.load(f)
-
     results = defaultdict(dict)
     for i in range(1, len(glob(f'{args.exp_dir}/seed*'))+1):
-        results[f'seed{i}'] = eval(args, env_cfgs, seed=i)
+        results[f'seed{i}'] = eval(args, seed=i)
 
     compare_temperature(args, results)
     compare_hp_usage(args, results)

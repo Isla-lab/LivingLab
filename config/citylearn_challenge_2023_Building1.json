@@ -43,7 +43,7 @@
             "active": true
         },
         "comfort_band": {
-            "active": false
+            "active": true
         },
         "cooling_demand": {
             "active": false
@@ -152,6 +152,7 @@
         ]
     },
     "periodic_normalization": true,
+    "thermal_demand_propagation": 1,
     "reward_fn": {
         "class": "ComfortRewardFunction"
     }
