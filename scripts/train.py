@@ -1,6 +1,3 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # Omnisafe
 from ext import omnisafe
 
@@ -8,6 +5,7 @@ from ext import omnisafe
 from livinglab.envs.livinglab_env import LivingLabEnv
 
 # Utils
+import os
 import torch
 import argparse
 import yaml, json
@@ -39,6 +37,7 @@ def parse_arguments():
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
     parser.add_argument('--project', type=str, nargs='?', help="Wandb project")
     parser.add_argument('--entity', type=str, nargs='?', help="Wandb entity")
+    parser.add_argument('--exp_name', type=str, nargs='?', help="Experiment name")
     parser.add_argument('--tag', type=str, nargs='*', help="Wandb tag")
 
     return parser.parse_args()
@@ -88,7 +87,7 @@ def train(args, env_cfgs):
             'wandb_project': args.project if args.project is not None else 'None',
             'entity': args.entity if args.entity is not None else 'None',
             'mode': 'online',
-            'tag': list(args.tag) if args.tag is not None else []
+            'tag': [args.exp_name]
         },
        
         # --- LIVINGLAB KEY ARGUMENTS ---
@@ -123,8 +122,8 @@ if __name__ == '__main__':
     args = parse_arguments()
 
     # Experiment logging
-    exp_name = datetime.now().strftime('%d-%m-%y_%H:%M')
-    exp_dir = f'./experiments/{args.algo}_{exp_name}'
+    exp_name = f"{args.algo}_{datetime.now().strftime('%d-%m-%y_%H:%M')}" if args.exp_name is None else args.exp_name
+    exp_dir = f'./experiments/{exp_name}'
     seed_dir = f'{exp_dir}/seed{args.seed}'
     os.makedirs(seed_dir, exist_ok=True)
 

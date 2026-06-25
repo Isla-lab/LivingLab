@@ -1,6 +1,3 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # Omnisafe
 from ext import omnisafe
 
@@ -40,7 +37,7 @@ def main(args):
         'seed': args.seed,
         'train_cfgs': {
             'total_steps': args.episodes*(env_cfgs['episode_length']-1),
-            'device': 'cuda' if torch.cuda.is_available() else 'cpu'
+            'device': 'cuda:0' if torch.cuda.is_available() else 'cpu'
         },
         'algo_cfgs': {
             'steps_per_epoch': env_cfgs['episode_length']-1,
@@ -58,18 +55,12 @@ def main(args):
        
         # --- LIVINGLAB KEY ARGUMENTS ---
         'env_cfgs': {
-            **env_cfgs,
-            'cost_fn': {
-                'name': 'electricity_consumption',
-                'kwargs': {
-                    'exponent': 2.0
-                }
-            }
+            **env_cfgs
         }
     }
 
     # 3. Define and train the agent
-    agent = omnisafe.Agent('PPOLag', 'LivingLab-v0', custom_cfgs=custom_cfgs)
+    agent = omnisafe.Agent('PPO', 'LivingLab-v0', custom_cfgs=custom_cfgs)
     agent.learn()
 
 

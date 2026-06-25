@@ -1,10 +1,8 @@
-import sys, os; sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import warnings; warnings.filterwarnings("ignore", category=UserWarning)
-
 # LivingLab
 from livinglab.envs.livinglab_env import LivingLabEnv
 
 # Utils
+import os
 import wandb
 import json, yaml
 import argparse
@@ -115,9 +113,10 @@ def compare_temperature(args, results):
     bx1.plot(np.zeros_like(cooling_demand), color='black', linestyle='--')
     bx1.grid('on')
 
-    os.makedirs(f'./experiments/{args.agent}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{args.agent}/figs/indoor_dry_bulb_temperature.png', format='png')
-    plt.show()
+    name = args.agent if args.name is None else args.name
+    os.makedirs(f'./experiments/{name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/figs/indoor_dry_bulb_temperature.png', format='png')
+    # plt.show()
 
 def compare_hp_usage(args, results):
     # Outdoor temperatures
@@ -164,9 +163,10 @@ def compare_hp_usage(args, results):
     bx.legend()
     bx.grid('on')
 
-    os.makedirs(f'./experiments/{args.agent}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{args.agent}/figs/mshp_usage.png', format='png')
-    plt.show()
+    name = args.agent if args.name is None else args.name
+    os.makedirs(f'./experiments/{name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/figs/mshp_usage.png', format='png')
+    # plt.show()
 
 
 def compare_thermal_battery(args, results):
@@ -188,9 +188,10 @@ def compare_thermal_battery(args, results):
     bx2.set_ylim(ymin=-0.05, ymax=1.05)
     bx2.yaxis.label.set_color('xkcd:orange')
 
-    os.makedirs(f'./experiments/{args.agent}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{args.agent}/figs/thermal_battery.png', format='png')
-    plt.show()
+    name = args.agent if args.name is None else args.name
+    os.makedirs(f'./experiments/{name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/figs/thermal_battery.png', format='png')
+    # plt.show()
 
 
 def log_kpis(args, results):
@@ -208,7 +209,7 @@ def log_kpis(args, results):
     run = wandb.init(
         entity=args.entity,
         project='LivingLab_RL_eval_v3' if args.project is None else args.project,
-        name=args.agent
+        name=args.agent if args.name is None else args.name
     )
 
     # Log results
@@ -291,5 +292,5 @@ if __name__ == '__main__':
 
     compare_temperature(args, results)
     compare_hp_usage(args, results)
-    # if args.wandb:
-    #     log_kpis(args, results)
+    if args.wandb:
+        log_kpis(args, results)

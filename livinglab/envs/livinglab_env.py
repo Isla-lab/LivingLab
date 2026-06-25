@@ -65,6 +65,7 @@ class LivingLabEnv(gym.Env, Environment):
             active_observations: Optional[Iterable[str]]=[],
             inactive_observations: Optional[Iterable[str]]=[],
             periodic_observations_metadata: Optional[Mapping[str, Iterable[Union[int, float]]]]=None,
+            thermal_demand_propagation: Optional[int]=None,
             episode_length: Optional[int]=None,
         ):
         super().__init__(seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
@@ -78,6 +79,7 @@ class LivingLabEnv(gym.Env, Environment):
         # Options
         self.periodic_normalization = periodic_normalization
         self.periodic_observations_metadata = periodic_observations_metadata
+        self.thermal_demand_propagation = thermal_demand_propagation
         self.active_observations = set(active_observations)
         self.inactive_observations = set(inactive_observations)
         assert len(self.active_observations.intersection(inactive_observations)) == 0, \
@@ -247,6 +249,16 @@ class LivingLabEnv(gym.Env, Environment):
         return self._action_space
     
     @property
+    def thermal_demand_propagation(self) -> int:
+        """
+        Environment's mode of propagating the thermal demand generated at `self.time_step` to the next time step.
+        * 0 -> thermal demand affects the indoor dry-bulb temperature at `self.time_step` (no propagation)
+        * 1 -> thermal demand affects the indoor dry-bulb temperature at `self.time_step + 1`
+        * 2 -> thermal demand affects the indoor dry-bulb temperature at both `self.time_step` and `self.time_step + 1`
+        """
+        return self._thermal_demand_propagation
+    
+    @property
     def env_metadata(self) -> Mapping[str, Any]:
         return {
             'active_observations': self.active_observations,
@@ -325,6 +337,12 @@ class LivingLabEnv(gym.Env, Environment):
     def action_space(self, new_space: spaces.Box):
         self._action_space = new_space
 
+    @thermal_demand_propagation.setter
+    def thermal_demand_propagation(self, new_mode: Optional[int]):
+        assert new_mode is None or new_mode in range(3), f'Invalid thermal demand propagation mode {new_mode}. Must be in [0, 1, 2].'
+        new_mode = 0 if new_mode is None else new_mode
+        self._thermal_demand_propagation = new_mode
+
     def reset(self, seed: int=None, options: Optional[Mapping[str, Any]]=None) -> Tuple[np.ndarray, Mapping[str, Any]]:
         """
         Reset `LivingLabEnv` to its initial state.
@@ -398,9 +416,21 @@ class LivingLabEnv(gym.Env, Environment):
         self.apply_actions(**action_dict)
 
         # Update indoor temperature via dynamics
-        self._update_dynamics_input()
-        if self.simulate_dynamics:
-            self.update_indoor_dry_bulb_temperature()
+        if self._thermal_demand_propagation == 0:
+            self._extend_dynamics_input()
+            if self.simulate_dynamics:
+                self.update_indoor_dry_bulb_temperature()
+        else:
+            if self.simulate_dynamics:
+                if self._thermal_demand_propagation == 2:
+                    self._update_last_dynamics_input(
+                        vars={
+                            'cooling_demand': self.energy_simulation.cooling_demand[self.time_step]
+                        }
+                    )
+                    self.update_indoor_dry_bulb_temperature()
+            else:
+                self._extend_dynamics_input()
 
         # Update environment variables (reflect effects of actions)
         net_electricity_consumption = (
@@ -420,6 +450,15 @@ class LivingLabEnv(gym.Env, Environment):
 
         # Advance to the next time step
         self._next_time_step()
+
+        # TODO - ASSUMPTION: propagate the last agent's action to the current state
+        if self.simulate_dynamics and self._thermal_demand_propagation > 0:
+            # Extract the last cooling demand (result of the agent's action)
+            self._extend_dynamics_input(past=True)
+
+            # Update the indoor temperature at the current `self.time_step` using the current observations
+            # In this way the agent "sees" the propagation of its actions through time 
+            self.update_indoor_dry_bulb_temperature()
 
         return self.observations(), reward, self.terminated, self.truncated, self.info
     
@@ -884,7 +923,7 @@ class LivingLabEnv(gym.Env, Environment):
         past_t = max(self.time_step - 1, 0) if past else self.time_step
         ep_past_t = max(self.episode_time_step - 1, 0) if past else self.episode_time_step
         observations.update({
-            'cooling_demand': self.energy_simulation.cooling_demand[past_t] + abs(min(self.thermal_battery.energy_balance[ep_past_t], 0.0)),
+            'cooling_demand': self.energy_simulation.cooling_demand[past_t],
             'thermal_battery_soc': self.thermal_battery.soc[ep_past_t],
             'net_electricity_consumption': self.net_electricity_consumption[ep_past_t]
         })
@@ -900,9 +939,9 @@ class LivingLabEnv(gym.Env, Environment):
         # Increate `self.time_step`
         Environment.step(self)
     
-    def _update_dynamics_input(self, sanity_check: bool=True):
+    def _extend_dynamics_input(self, sanity_check: bool=True, past: bool=False):
         # Get current observations
-        obs = self.observations(include_all=True, past=False, names=True)
+        obs = self.observations(include_all=True, past=past, names=True)
         if sanity_check:
             missing = [name for name in self.dynamics.input_observation_names if name not in obs.keys()]
             assert len(missing) == 0, f'Missing observations required by the dynamics: {missing}.'
@@ -917,6 +956,21 @@ class LivingLabEnv(gym.Env, Environment):
                 self.dynamics.input_norm_max
             )
         ]
+
+    def _update_last_dynamics_input(self, vars: Mapping[str, float], sanity_check: bool=True):
+        if sanity_check:
+            missing = [name for name in vars.keys() if name not in self.dynamics.input_observation_names]
+            assert len(missing) == 0, f'Trying to update variables missing in the dynamics input: {missing}.'
+
+        for name, value in vars.items():
+            idx = self.dynamics.input_observation_names.index(name)
+
+            # Normalization values
+            min_ = self.dynamics.input_norm_min[idx]
+            max_ = self.dynamics.input_norm_max[idx]
+
+            # Update last value in the dynamics input
+            self.dynamics.model_input[idx][-1] = (value - min_)/(max_ - min_)
 
     def _get_dynamics_input(self) -> torch.Tensor:
         model_input = []
