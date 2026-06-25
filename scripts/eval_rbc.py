@@ -4,12 +4,10 @@ from livinglab.envs.livinglab_env import LivingLabEnv
 # Utils
 import os
 import wandb
-import json, yaml
+import json
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
-from collections import defaultdict
-from glob import glob
 from tabulate import tabulate
 from agent import HourRBC, ComfortRBC
 
@@ -48,7 +46,9 @@ def parse_arguments():
 
     # LivingLab configs
     parser.add_argument('--agent', type=str, default='HourRBC', help="RBC agent to evaluete")
-    parser.add_argument('--env_cfgs', type=str, default='./experiments/PPO_comfort_reward/env_cfgs/test_cfgs.json', help="Path to the configurations of the environment")
+    parser.add_argument('--env_cfgs', type=str, default='./config/default.json', help="Path to the configurations of the environment")
+    parser.add_argument('--start', type=int, nargs='?', help="Initial simulation time step")
+    parser.add_argument('--end', type=int, nargs='?', help="Ending simulation time step")
 
     # Wandb logging    
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
@@ -114,9 +114,10 @@ def compare_temperature(args, results):
     bx1.grid('on')
 
     name = args.agent if args.name is None else args.name
-    os.makedirs(f'./experiments/{name}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{name}/figs/indoor_dry_bulb_temperature.png', format='png')
-    # plt.show()
+    env_name = args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'./experiments/{name}/{env_name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/{env_name}/figs/indoor_dry_bulb_temperature.png', format='png')
+
 
 def compare_hp_usage(args, results):
     # Outdoor temperatures
@@ -164,9 +165,9 @@ def compare_hp_usage(args, results):
     bx.grid('on')
 
     name = args.agent if args.name is None else args.name
-    os.makedirs(f'./experiments/{name}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{name}/figs/mshp_usage.png', format='png')
-    # plt.show()
+    env_name = args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'./experiments/{name}/{env_name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/{env_name}/figs/mshp_usage.png', format='png')
 
 
 def compare_thermal_battery(args, results):
@@ -189,9 +190,9 @@ def compare_thermal_battery(args, results):
     bx2.yaxis.label.set_color('xkcd:orange')
 
     name = args.agent if args.name is None else args.name
-    os.makedirs(f'./experiments/{name}/figs', exist_ok=True)
-    fig.savefig(f'./experiments/{name}/figs/thermal_battery.png', format='png')
-    # plt.show()
+    env_name = args.env_cfgs.split('/')[-1].split('.')[0]
+    os.makedirs(f'./experiments/{name}/{env_name}/figs', exist_ok=True)
+    fig.savefig(f'./experiments/{name}/{env_name}/figs/thermal_battery.png', format='png')
 
 
 def log_kpis(args, results):
@@ -222,7 +223,13 @@ def log_kpis(args, results):
 
 def eval(args, env_cfgs):
     # Load the LivingLabEnv given the configurations
-    env = LivingLabEnv(**env_cfgs)
+    env = LivingLabEnv.from_json(config=env_cfgs)
+
+    # Modify start and end time step if provided
+    if args.start is not None:
+        env.start_time_step = args.start
+    if args.end is not None:
+        env.end_time_step = args.end
 
     # Load the agent
     if args.agent == 'HourRBC':
