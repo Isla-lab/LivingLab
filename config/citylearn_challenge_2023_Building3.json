@@ -1,7 +1,7 @@
 {
     "seed": 42,
     "sim_data_paths": {
-        "energy_simulation": "/datasets/citylearn_challenge_2023_phase_1/Building_2.csv",
+        "energy_simulation": "/datasets/citylearn_challenge_2023_phase_1/Building_3.csv",
         "weather": "/datasets/citylearn_challenge_2023_phase_1/weather.csv",
         "pricing": "/datasets/citylearn_challenge_2023_phase_1/pricing.csv",
         "carbon_intensity": "/datasets/citylearn_challenge_2023_phase_1/carbon_intensity.csv"
@@ -83,24 +83,24 @@
         }
     },
     "heat_pump_cfgs": {
-        "nominal_power": 2.25,
-        "efficiency": 0.29,
+        "nominal_power": 2.78,
+        "efficiency": 0.26,
         "mode": "cooling",
-        "target_temperature": 6.0,
-        "tank_depth": 5.0,
+        "target_temperature": 6.21,
+        "tank_depth": 7.5,
         "soil_alpha": 0.052,
         "kasuda_data": "../data/datasets/citylearn_challenge_2023_phase_1/USA_TX_San.Antonio.Intl.AP.722530_TMY3.epw"
     },
     "thermal_battery_cfgs": {
-        "capacity": 4.0,
-        "efficiency": 0.95,
+        "capacity": 3.3,
+        "efficiency": 0.96,
         "loss_coef": 1e-05
     },
     "pv_system_cfgs": {
-            "nominal_power": 1.2
+            "nominal_power": 2.4
     },
     "dynamics_cfgs": {
-        "path": "/datasets/citylearn_challenge_2023_phase_1/Building_2.pth",
+        "path": "/datasets/citylearn_challenge_2023_phase_1/Building_3.pth",
         "num_layers": 2,
         "input_size": 13,
         "hidden_size": 16,
@@ -124,7 +124,7 @@
             0.0,
             0.0,
             21.7,
-            20.444445,
+            21.666666,
             0.0,
             0.0,
             -0.8660254,
@@ -133,22 +133,22 @@
             -1.0,
             -0.9749279,
             -0.90096885,
-            16.119997
+            17.278326
         ],
         "input_norm_max": [
             931.0,
             486.5,
             42.8,
-            26.666666,
-            1.0,
-            11.077426,
+            29.444445,
+            2.0,
+            11.438825,
             1.2246469000000002e-16,
             -0.5,
             1.0,
             1.0,
             0.9749279,
             1.0,
-            42.521355
+            43.541588
         ]
     },
     "periodic_normalization": true,
