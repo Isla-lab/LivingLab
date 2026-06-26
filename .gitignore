@@ -6,6 +6,7 @@
 
 # Installation artifacts
 **/*.egg-info/*
+**/.vscode/*
 
 # Bash scripts
 **/*.sh
