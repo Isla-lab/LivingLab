@@ -149,7 +149,8 @@
             0.9749279,
             1.0,
             43.541588
-        ]
+        ],
+        "reset_on_ep_start": true
     },
     "periodic_normalization": true,
     "thermal_demand_propagation": 1,

@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from pathlib import Path
 from abc import ABC, abstractmethod
-from typing import Tuple, List, Union
+from typing import Optional, Tuple, List, Union
 
 class Dynamics(ABC):
     """
@@ -30,8 +30,9 @@ class LSTMDynamics(Dynamics, nn.Module):
             num_layers: int,
             hidden_size: int,
             lookback: int,
-            input_size: int=None,
-            dropout: float=0.0
+            input_size: Optional[int]=None,
+            dropout: float=0.0,
+            reset_on_ep_start: Optional[bool]=None
         ):
         Dynamics.__init__(self)
         nn.Module.__init__(self)
@@ -61,6 +62,9 @@ class LSTMDynamics(Dynamics, nn.Module):
             in_features=self.hidden_size,
             out_features=1, # <- the predicted indoor temperature
         )
+
+        # Dynamics options
+        self.reset_on_ep_start = reset_on_ep_start
     
     @property
     def model_input(self):
@@ -82,6 +86,10 @@ class LSTMDynamics(Dynamics, nn.Module):
     def input_size(self):
         return self._input_size
     
+    @property
+    def reset_on_ep_start(self) -> bool:
+        return self._reset_on_ep_start
+    
     @input_size.setter
     def input_size(self, new_size: int):
         assert new_size is None or new_size > 0, f'Invalid input dimensionality {new_size}. Must be either `None` or > 0.'
@@ -94,6 +102,11 @@ class LSTMDynamics(Dynamics, nn.Module):
     @hidden_state.setter
     def hidden_state(self, new_h: Tuple[torch.Tensor, torch.Tensor]):
         self._hidden_state = new_h
+
+    @reset_on_ep_start.setter
+    def reset_on_ep_start(self, new_val: Optional[bool]):
+        assert new_val is None or isinstance(new_val, bool), f'Invalid type for `LSTMDynamics.reset_on_ep_start`. Required `bool`, found {type(new_val)}.'
+        self._reset_on_ep_start = True if new_val is None else new_val
 
     def forward(self, x: torch.Tensor, h: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         lstm_out, h = self.l_lstm(x, h)

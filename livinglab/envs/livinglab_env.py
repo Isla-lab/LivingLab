@@ -259,6 +259,11 @@ class LivingLabEnv(gym.Env, Environment):
         return self._thermal_demand_propagation
     
     @property
+    def reset_dynamics(self) -> bool:
+        """Whether to call `self.dynamics.reset()` upon calling `self.reset()`."""
+        return self.episode_counter < 1 or self.dynamics.reset_on_ep_start
+    
+    @property
     def env_metadata(self) -> Mapping[str, Any]:
         return {
             'active_observations': self.active_observations,
@@ -376,7 +381,8 @@ class LivingLabEnv(gym.Env, Environment):
         self.pv_system.reset()
 
         # Reset dynamics
-        self.dynamics.reset()
+        if self.reset_dynamics:
+            self.dynamics.reset()
 
         # Reset additional variables
         self._episode_rewards = np.zeros(self.episode_length, dtype=np.float32)
