@@ -32,6 +32,7 @@ class Environment(ABC):
 
         # Episodic info
         self.episode_length = episode_length
+        self._ready_to_reset = True
 
     @property
     def seed(self) -> int:
@@ -57,6 +58,11 @@ class Environment(ABC):
     def episode_length(self):
         """Time steps duration of a simulation episode."""
         return self._episode_length
+    
+    @property
+    def ready_to_reset(self) -> bool:
+        """Wheather the environment can safely call `Environment.reset()`"""
+        return self._ready_to_reset
     
     @property
     def simulation_episodes(self):
@@ -134,6 +140,10 @@ class Environment(ABC):
             self.simulation_episodes = (self._end_time_step + 1) // self.episode_length
             self.episode_counter = -1
 
+    @ready_to_reset.setter
+    def ready_to_reset(self, new_val: bool):
+        self._ready_to_reset = new_val
+
     @simulation_episodes.setter
     def simulation_episodes(self, n: int):
         assert n > 0, f'Invalid number of simulation episodes n={n}. Must be > 0.'
@@ -164,16 +174,19 @@ class Environment(ABC):
 
     def step(self):
         self.episode_time_step += 1
+        self._ready_to_reset = True
 
     def reset(self):
         """
         Reset the environment to its initial state, 
         and set next `self.episode_start_time_step` and `self.episode_end_time_step` correclty.
         """
-        self.episode_counter += 1
-        self.episode_time_step = 0
-        self.episode_start_time_step = self.start_time_step + (self.episode_counter % self.simulation_episodes) * self.episode_length
-        self.episode_end_time_step = self.episode_start_time_step + self.episode_length - 1
+        if self.ready_to_reset:
+            self.episode_counter += 1
+            self.episode_time_step = 0
+            self.episode_start_time_step = self.start_time_step + (self.episode_counter % self.simulation_episodes) * self.episode_length
+            self.episode_end_time_step = self.episode_start_time_step + self.episode_length - 1
+            self._ready_to_reset = False
 
 
 class Device(Environment):
