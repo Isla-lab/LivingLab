@@ -63,7 +63,6 @@ We recommend using a [Miniconda](https://www.anaconda.com/docs/getting-started/m
 4. Setup [Omnisafe](https://github.com/PKU-Alignment/omnisafe):
     ```bash
     cd ext/omnisafe
-    conda activate safe-livinglab
     pip install -e .
     ```
 
