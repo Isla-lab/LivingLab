@@ -155,9 +155,16 @@ class ThermalBattery(Device):
         else:
             self._energy_balance[self.episode_time_step] = delta_energy * self.round_trip_efficiency
 
-    def reset(self):
-        """Reset the Thermal Battery to its initial state."""
-        super().reset()
+    def reset(self, **kwargs: Mapping[str, Any]):
+        """
+        Reset the Thermal Battery to its initial state.
+
+        Parameters
+        ----------
+        :param kwargs: Keyword parameters for `super().reset()`
+        :type kwargs: Mapping[str, Any]
+        """
+        super().reset(**kwargs)
         self._soc = np.zeros(self.episode_length, dtype=np.float32)
         self._soc[0] = self.initial_soc
         self._energy_balance = np.zeros(self.episode_length, dtype=np.float32)

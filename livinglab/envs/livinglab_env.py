@@ -66,6 +66,7 @@ class LivingLabEnv(gym.Env, Environment):
             inactive_observations: Optional[Iterable[str]]=[],
             periodic_observations_metadata: Optional[Mapping[str, Iterable[Union[int, float]]]]=None,
             thermal_demand_propagation: Optional[int]=None,
+            random_ep_reset: Optional[bool]=None,
             episode_length: Optional[int]=None,
         ):
         super().__init__(seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
@@ -80,6 +81,7 @@ class LivingLabEnv(gym.Env, Environment):
         self.periodic_normalization = periodic_normalization
         self.periodic_observations_metadata = periodic_observations_metadata
         self.thermal_demand_propagation = thermal_demand_propagation
+        self.random_ep_reset = random_ep_reset
         self.active_observations = set(active_observations)
         self.inactive_observations = set(inactive_observations)
         assert len(self.active_observations.intersection(inactive_observations)) == 0, \
@@ -259,6 +261,11 @@ class LivingLabEnv(gym.Env, Environment):
         return self._thermal_demand_propagation
     
     @property
+    def random_ep_reset(self) -> bool:
+        """Whether to restart each episode to a random initial time step."""
+        return self._random_ep_reset
+    
+    @property
     def reset_dynamics(self) -> bool:
         """Whether to call `self.dynamics.reset()` upon calling `self.reset()`."""
         return self.episode_counter < 1 or self.dynamics.reset_on_ep_start
@@ -348,6 +355,11 @@ class LivingLabEnv(gym.Env, Environment):
         new_mode = 0 if new_mode is None else new_mode
         self._thermal_demand_propagation = new_mode
 
+    @random_ep_reset.setter
+    def random_ep_reset(self, new_val: Optional[bool]):
+        assert new_val is None or isinstance(new_val, bool), f'Invalid type for `LivingLabEnv.random_ep_reset`. Required `bool`, found {type(new_val)}.'
+        self._random_ep_reset = False if new_val is None else new_val
+
     def reset(self, seed: int=None, options: Optional[Mapping[str, Any]]=None) -> Tuple[np.ndarray, Mapping[str, Any]]:
         """
         Reset `LivingLabEnv` to its initial state.
@@ -365,7 +377,15 @@ class LivingLabEnv(gym.Env, Environment):
         :rtype: np.ndarray
         """
         gym.Env.reset(self)
-        Environment.reset(self)
+
+        # Reset the environment to a valid random start time step
+        if self.random_ep_reset:
+            random_start_time_step = np.random.choice(
+                np.arange(self.start_time_step, self.end_time_step, self.episode_length)
+            )
+        else:
+            random_start_time_step = None
+        Environment.reset(self, episode_start_time_step=random_start_time_step)
 
         # Check options
         if options is None:
@@ -376,9 +396,9 @@ class LivingLabEnv(gym.Env, Environment):
             self.seed = seed
 
         # Reset devices
-        self.heat_pump.reset()
-        self.thermal_battery.reset()
-        self.pv_system.reset()
+        self.heat_pump.reset(episode_start_time_step=random_start_time_step)
+        self.thermal_battery.reset(episode_start_time_step=random_start_time_step)
+        self.pv_system.reset(episode_start_time_step=random_start_time_step)
 
         # Reset dynamics
         if self.reset_dynamics:

@@ -176,15 +176,21 @@ class Environment(ABC):
         self.episode_time_step += 1
         self._ready_to_reset = True
 
-    def reset(self):
+    def reset(self, episode_start_time_step: Optional[int]=None):
         """
         Reset the environment to its initial state, 
         and set next `self.episode_start_time_step` and `self.episode_end_time_step` correclty.
+
+        Parameters
+        ----------
+        :param episode_start_time_step: Explicit time step to reset the environment to
+        :type episode_start_time_step: int
         """
         if self.ready_to_reset:
             self.episode_counter += 1
             self.episode_time_step = 0
-            self.episode_start_time_step = self.start_time_step + (self.episode_counter % self.simulation_episodes) * self.episode_length
+            self.episode_start_time_step = episode_start_time_step if episode_start_time_step is not None else \
+                                           self.start_time_step + (self.episode_counter % self.simulation_episodes) * self.episode_length
             self.episode_end_time_step = self.episode_start_time_step + self.episode_length - 1
             self._ready_to_reset = False
 

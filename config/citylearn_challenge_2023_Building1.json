@@ -154,6 +154,7 @@
     },
     "periodic_normalization": true,
     "thermal_demand_propagation": 1,
+    "random_ep_reset": false,
     "reward_fn": {
         "class": "ComfortRewardFunction"
     }

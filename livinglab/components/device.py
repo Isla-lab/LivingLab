@@ -57,9 +57,16 @@ class ElectricDevice(Device):
             f'Invalid electricity consumption value {electricity_consumption}. Must be >= 0.'
         self._electricity_consumption[self.episode_time_step] += electricity_consumption
 
-    def reset(self):
-        """Reset the Electric Device to its initial state."""
-        super().reset()
+    def reset(self, **kwargs: Mapping[str, Any]):
+        """
+        Reset the Electric Device to its initial state.
+
+        Parameters
+        ----------
+        :param kwargs: Keyword parameters for `super().reset()`
+        :type kwargs: Mapping[str, Any]
+        """
+        super().reset(**kwargs)
         self._electricity_consumption = np.zeros(self.episode_length, dtype=np.float32)
 
     def get_metadata(self) -> Mapping[str, Any]:
