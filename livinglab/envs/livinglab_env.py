@@ -1,10 +1,14 @@
 import torch
 import numpy as np
 import gymnasium as gym
+import imageio.v2 as imageio
 from gymnasium import spaces
+from PIL import Image
+from matplotlib import pyplot as plt
 
 import os
 import json
+from glob import glob
 from pathlib import Path
 from typing import Any, Literal, Optional, Union, Callable, Iterable, Tuple, Set, List, Mapping, Dict
 from typing_extensions import Self
@@ -13,7 +17,7 @@ from livinglab.base import Environment, Device
 from livinglab.components.dynamics import Dynamics, LSTMDynamics
 from livinglab.components.device import DualSourceHeatPump, PVSystem
 from livinglab.components.battery import ThermalBattery
-from livinglab.utils.functions import DAYS_PER_MONTH, CostFunctions
+from livinglab.utils.functions import DAYS_PER_MONTH, UtilsFunctions, CostFunctions
 from livinglab.utils.data_loader import EnergySimulation, Weather, Pricing, CarbonEmissions
 from livinglab.utils.preprocessing import Normalize, PeriodicNormalization
 from livinglab.utils import rewards
@@ -67,6 +71,7 @@ class LivingLabEnv(gym.Env, Environment):
             periodic_observations_metadata: Optional[Mapping[str, Iterable[Union[int, float]]]]=None,
             thermal_demand_propagation: Optional[int]=None,
             random_ep_reset: Optional[bool]=None,
+            render_cfgs: Optional[Mapping[str, Any]]=None,
             episode_length: Optional[int]=None,
         ):
         super().__init__(seed=seed, start_time_step=start_time_step, end_time_step=end_time_step, episode_length=episode_length)
@@ -82,6 +87,8 @@ class LivingLabEnv(gym.Env, Environment):
         self.periodic_observations_metadata = periodic_observations_metadata
         self.thermal_demand_propagation = thermal_demand_propagation
         self.random_ep_reset = random_ep_reset
+        self.render_mode = None if render_cfgs is None else render_cfgs.get('mode', 'off')
+        self.render_dir = None if render_cfgs is None else render_cfgs.get('dir', None)
         self.active_observations = set(active_observations)
         self.inactive_observations = set(inactive_observations)
         assert len(self.active_observations.intersection(inactive_observations)) == 0, \
@@ -266,6 +273,20 @@ class LivingLabEnv(gym.Env, Environment):
         return self._random_ep_reset
     
     @property
+    def render_mode(self) -> str:
+        """
+        Living Lab render mode.
+        * `off`  -> no render
+        * `on`   -> render figures are saved to `self.render_dir`
+        * `real` -> real-time render + saving figures
+        """
+        return self._render_mode
+    
+    @property
+    def render_dir(self) -> Union[str, None]:
+        return self._render_dir
+    
+    @property
     def reset_dynamics(self) -> bool:
         """Whether to call `self.dynamics.reset()` upon calling `self.reset()`."""
         return self.episode_counter < 1 or self.dynamics.reset_on_ep_start
@@ -359,6 +380,21 @@ class LivingLabEnv(gym.Env, Environment):
     def random_ep_reset(self, new_val: Optional[bool]):
         assert new_val is None or isinstance(new_val, bool), f'Invalid type for `LivingLabEnv.random_ep_reset`. Required `bool`, found {type(new_val)}.'
         self._random_ep_reset = False if new_val is None else new_val
+
+    @render_mode.setter
+    def render_mode(self, new_mode: Optional[str]):
+        assert new_mode is None or new_mode in ['off', 'on', 'real'], f'Invalid render mode {new_mode}. Must be in [`off`, `on`, `real`].'
+
+        # TODO: work on real-time rendering
+        if new_mode == 'real':
+            print('[WARN] Real-time rendering has not been implemented, yet. Switched to render_mode=`on`.')
+
+        self._render_mode = 'off' if new_mode is None else new_mode
+
+    @render_dir.setter
+    def render_dir(self, new_dir: Optional[str]):
+        self._render_dir = '../render' if new_dir is None else new_dir
+        os.makedirs(self._render_dir, exist_ok=True)
 
     def reset(self, seed: int=None, options: Optional[Mapping[str, Any]]=None) -> Tuple[np.ndarray, Mapping[str, Any]]:
         """
@@ -486,7 +522,59 @@ class LivingLabEnv(gym.Env, Environment):
             # In this way the agent "sees" the propagation of its actions through time 
             self.update_indoor_dry_bulb_temperature()
 
+        # TODO: render
+        if self.render_mode != 'off':
+            self.render()
+
         return self.observations(), reward, self.terminated, self.truncated, self.info
+    
+    def render(self):
+        # Retrieve data
+        indoor_dry_bulb_temperature = self.energy_simulation.indoor_dry_bulb_temperature[self.episode_start_time_step:self.time_step]
+        indoor_temperature_setpoint = self.energy_simulation.indoor_dry_bulb_temperature_cooling_set_point[self.episode_start_time_step:self.episode_end_time_step+1]
+        comfort_band = self.energy_simulation.comfort_band[self.episode_start_time_step:self.episode_end_time_step+1]
+        outdoor_dry_bulb_temperature = self.weather.outdoor_dry_bulb_temperature[self.episode_start_time_step:self.time_step]
+        cooling_demand = self.energy_simulation.cooling_demand[self.episode_start_time_step:self.time_step]
+        energy_from_battery = self.thermal_battery.energy_balance[:self.episode_time_step]
+
+        # Create figure
+        fig =  plt.figure(figsize=[20,10])
+
+        # Indoor dry-bulb temperature
+        ax = fig.add_subplot(2,1,1)
+        UtilsFunctions.render_indoor_state(
+            ax=ax, 
+            indoor_dry_bulb_temperature=indoor_dry_bulb_temperature, 
+            indoor_temperature_setpoint=indoor_temperature_setpoint, 
+            comfort_band=comfort_band, 
+            outdoor_dry_bulb_temperature=outdoor_dry_bulb_temperature,
+            time_steps=self.episode_length
+        )
+        
+        # Thermal demand and Battery energy balance
+        bx = fig.add_subplot(2,1,2)
+        UtilsFunctions.render_device_control(
+            ax=bx,
+            thermal_demand=cooling_demand,
+            energy_from_battery=energy_from_battery,
+            time_steps=self.episode_length
+        )
+
+        # Save the figure
+        os.makedirs(f'{self.render_dir}/ep{self.episode_counter:04}', exist_ok=True)
+        fig.savefig(f'{self.render_dir}/ep{self.episode_counter:04}/step{self.episode_time_step:03}.png', format='png')
+        plt.close(fig=fig)
+
+        # Create GIF animation
+        if self.terminated:
+            image_files = sorted(glob(f'{self.render_dir}/ep{self.episode_counter:04}/*.png'))
+            imgs = [Image.open(f).convert('P', palette=Image.ADAPTIVE) for f in image_files]
+            imgs[0].save(
+                f'{self.render_dir}/ep{self.episode_counter:04}/animation.gif',
+                append_images=imgs[1:],
+                duration=100,
+                loop=0
+            )
     
     def load_device(self, device: Union[Device, Mapping[str, Any]], device_class: Callable) -> Device:
         """

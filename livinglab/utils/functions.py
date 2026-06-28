@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
 from ladybug.epw import EPW
 
 from typing import Optional, Union, Tuple, List, Mapping
@@ -84,6 +85,106 @@ class UtilsFunctions:
         min_day = int((t_ground.argmin() + 1) / 24) # <- ASSUMPTION: hourly observations
 
         return {'mean': t_mean, 'amplitude': amplitude, 't0': min_day}
+    
+    @staticmethod
+    def render_indoor_state(
+        ax: Axes, 
+        indoor_dry_bulb_temperature: np.ndarray, 
+        indoor_temperature_setpoint: np.ndarray,
+        comfort_band: np.ndarray,
+        outdoor_dry_bulb_temperature: np.ndarray,
+        time_steps: int,
+    ):
+        """
+        Render the current indoor state fo the Living Lab.
+
+        Parameters
+        ----------
+        :param ax: `matplotlib.Axes`
+        :type: Axes
+        :param indoor_dry_bulb_temperature: Current history of the indoor dry-bulb temperature
+        :type indoor_dry_bulb_temperature: np.ndarray
+        :param indoor_temperature_setpoint: User-defined setpoint throughout simulation.
+        :type indoor_temperature_setpoint: np.ndarray
+        :param comfort_band: Maximum deviation from the setpoint in terms of degrees to define comfort.
+        :type comfort_band: np.ndarray
+        :param outdoor_dry_bulb_temperature: Current history of the outdoor dry-bulb temperature
+        :type outdoor_dry_bulb_temperature: np.ndarray
+        :param time_steps: Simulation length
+        :type time_steps: int 
+        """
+        # Setpoint and comfort band
+        ax.fill_between(
+            range(time_steps),
+            indoor_temperature_setpoint + comfort_band,
+            indoor_temperature_setpoint - comfort_band,
+            color='g',
+            alpha=0.15,
+            label='Comfort band',
+        )
+
+        # Current indoor/outoor dry-bulb temperature
+        ax.plot(range(len(indoor_dry_bulb_temperature)), indoor_dry_bulb_temperature, linewidth=2.0, label='Indoor Dry Bulb Temperature', color='orange')
+        ax.plot(range(len(outdoor_dry_bulb_temperature)), outdoor_dry_bulb_temperature, label='Outdoor Dry Bulb Temperature', color='xkcd:light purple')
+
+        # Style
+        ax.grid('on')
+        ax.set_title('Indoor Dry-bulb Temperature Evolution', fontweight='bold')
+        ax.set_ylabel('Temperature [°C]')
+        ax.legend(loc='upper left')
+
+    @staticmethod
+    def render_device_control(ax: Axes, thermal_demand: np.ndarray, energy_from_battery: np.ndarray, time_steps: int):
+        """
+        Render the current device control.
+
+        Parameters
+        ----------
+        :param ax: `matplotlib.Axes`
+        :type: Axes
+        :param thermal_demand: Current thermal demand history due to MSHP control.
+        :type thermal_demand: np.ndarray
+        :param energy_from_battery: Current thermal battery energy balance evolution.
+        :type energy_from_battery: np.ndarray
+        :param time_steps: Simulation length
+        :type time_steps: int 
+        """
+
+        def _align_yaxis(ax1: Axes, ax2: Axes):
+            y1_lims = ax1.get_ylim()
+            y2_lims = ax2.get_ylim()
+
+            y1_frac = (0 - y1_lims[0]) / (y1_lims[1] - y1_lims[0])
+            y2_frac = (0 - y2_lims[0]) / (y2_lims[1] - y2_lims[0])
+
+            if y1_frac != y2_frac:
+                span = y2_lims[1] - y2_lims[0]
+                new_bottom = y2_lims[0] + (y2_frac - y1_frac) * span
+                new_top = new_bottom + span
+                ax2.set_ylim(new_bottom, new_top)
+
+        # Thermal demand 
+        ax.plot(range(len(thermal_demand)), thermal_demand, color='xkcd:soft blue')
+        ax.fill_between(
+            range(len(thermal_demand)),
+            np.zeros_like(thermal_demand),
+            thermal_demand,
+            color='xkcd:soft blue',
+            alpha=0.2
+        )
+        ax.set_ylabel('Cooling Demand [kWh]')
+        ax.yaxis.label.set_color('xkcd:soft blue')
+
+        # Energy from battery
+        ax_twin = ax.twinx()
+        ax_twin.bar(range(len(energy_from_battery)), energy_from_battery, color='xkcd:orange')
+        ax_twin.set_ylabel('Thermal Battery (Dis)Charge [kWh]')
+        ax_twin.yaxis.label.set_color('xkcd:orange')
+
+        # Aligning plots
+        _align_yaxis(ax, ax_twin)
+        ax.plot(np.zeros(time_steps), color='black', linestyle='--')
+        ax.grid('on') 
     
 
 class CostFunctions:

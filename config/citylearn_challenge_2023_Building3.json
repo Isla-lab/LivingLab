@@ -155,6 +155,10 @@
     "periodic_normalization": true,
     "thermal_demand_propagation": 1,
     "random_ep_reset": false,
+    "render_cfgs": {
+        "mode": "off",
+        "dir": "./render"
+    },
     "reward_fn": {
         "class": "ComfortRewardFunction"
     }
