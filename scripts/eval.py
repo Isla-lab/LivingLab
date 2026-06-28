@@ -52,6 +52,7 @@ def parse_arguments():
     parser.add_argument('--env_cfgs', type=str, nargs='?', help="Path to the JSON config file")
     parser.add_argument('--start', type=int, nargs='?', help="Initial simulation time step")
     parser.add_argument('--end', type=int, nargs='?', help="Ending simulation time step")
+    parser.add_argument('--render', action='store_true', help="Flag for enabling env rendering")
 
     # Wandb logging    
     parser.add_argument('--wandb', action='store_true', help="Wandb logging flag")
@@ -254,9 +255,24 @@ def eval(args, seed):
     if args.env_cfgs is None:
         with open(f'{args.exp_dir}/env_cfgs/test_cfgs.json', 'r') as f:
             env_cfgs = json.load(f)
+        if args.render:
+            env_cfgs.update({
+                'render_cfgs': {
+                    'mode': 'on',
+                    'dir': f'{args.exp_dir}/seed{seed}/render'
+                }
+            })
         env = LivingLabEnv(**env_cfgs)
     else:
-        env = LivingLabEnv.from_json(config=args.env_cfgs)
+        env = LivingLabEnv.from_json(
+            config=args.env_cfgs,
+            update={
+                'render_cfgs': {
+                    'mode': 'on' if args.render else 'off',
+                    'dir': f'{args.exp_dir}/seed{seed}/render'
+                }
+            }
+        )
 
     # Modify start and end time step if provided
     if args.start is not None:
