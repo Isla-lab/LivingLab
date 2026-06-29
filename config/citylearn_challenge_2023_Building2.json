@@ -69,6 +69,15 @@
         "electricity_pricing": {
             "active": false
         },
+        "electricity_pricing_predicted_1": {
+            "active": false
+        },
+        "electricity_pricing_predicted_2": {
+            "active": false
+        },
+        "electricity_pricing_predicted_3": {
+            "active": false
+        },
         "carbon_intensity": {
             "active": false
         },

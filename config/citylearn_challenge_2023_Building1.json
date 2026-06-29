@@ -67,12 +67,27 @@
             "active": false
         },
         "electricity_pricing": {
+            "active": true
+        },
+        "electricity_pricing_predicted_1": {
+            "active": true
+        },
+        "electricity_pricing_predicted_2": {
+            "active": false
+        },
+        "electricity_pricing_predicted_3": {
             "active": false
         },
         "carbon_intensity": {
             "active": false
         },
         "thermal_battery_soc": {
+            "active": true
+        },
+        "energy_from_battery": {
+            "active": true
+        },
+        "energy_from_heat_pump": {
             "active": true
         },
         "net_electricity_consumption": {

@@ -209,7 +209,7 @@ class LivingLabEnv(gym.Env, Environment):
     def observation_names(self) -> List[str]:
         """Names of all observations that can be returned by the environment."""
         sim_data_names = self.energy_simulation.observation_names + self.weather.observation_names + self.pricing.observation_names + self.carbon_intensity.observation_names                
-        device_obs_names = ['thermal_battery_soc', 'net_electricity_consumption', 'underground_temperature']
+        device_obs_names = ['thermal_battery_soc', 'energy_from_battery', 'energy_from_heat_pump', 'net_electricity_consumption', 'underground_temperature']
 
         return sim_data_names + device_obs_names
     
@@ -786,6 +786,14 @@ class LivingLabEnv(gym.Env, Environment):
                 low[key] = 0.0
                 high[key] = 1.0
 
+            elif key == 'energy_from_battery':
+                low[key] = -self.thermal_battery.capacity
+                high[key] = self.thermal_battery.capacity
+
+            elif key == 'energy_from_heat_pump':
+                low[key] = 0.0
+                high[key] = self.heat_pump.nominal_power
+
             elif key == 'net_electricity_consumption':
                 low[key] = -self.pv_system.get_generation(inverter_ac_power_per_kw=sim_data['solar_generation'].max())
                 high[key] = sim_data['non_shiftable_load'].max() + self.heat_pump.nominal_power
@@ -1039,6 +1047,8 @@ class LivingLabEnv(gym.Env, Environment):
         observations.update({
             'cooling_demand': self.energy_simulation.cooling_demand[past_t],
             'thermal_battery_soc': self.thermal_battery.soc[ep_past_t],
+            'energy_from_battery': self.thermal_battery.energy_balance[ep_past_t],
+            'energy_from_heat_pump': self.heat_pump.electricity_consumption[ep_past_t],
             'net_electricity_consumption': self.net_electricity_consumption[ep_past_t]
         })
 

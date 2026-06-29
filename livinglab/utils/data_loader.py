@@ -187,6 +187,10 @@ class Pricing(TimeSeriesData):
 
         # Current electricity pricing
         self.electricity_pricing = np.array(sim_data['electricity_pricing'], dtype=np.float32)
+        # Predictions
+        self.electricity_pricing_predicted_1 = np.array(sim_data['electricity_pricing_predicted_1'], dtype=np.float32)
+        self.electricity_pricing_predicted_2 = np.array(sim_data['electricity_pricing_predicted_2'], dtype=np.float32)
+        self.electricity_pricing_predicted_3 = np.array(sim_data['electricity_pricing_predicted_3'], dtype=np.float32)
 
 
 class CarbonEmissions(TimeSeriesData):
