@@ -124,14 +124,13 @@ class UtilsFunctions:
         )
 
         # Current indoor/outoor dry-bulb temperature
-        ax.plot(range(len(indoor_dry_bulb_temperature)), indoor_dry_bulb_temperature, linewidth=2.0, label='Indoor Dry Bulb Temperature', color='orange')
-        ax.plot(range(len(outdoor_dry_bulb_temperature)), outdoor_dry_bulb_temperature, label='Outdoor Dry Bulb Temperature', color='xkcd:light purple')
+        ax.plot(range(len(indoor_dry_bulb_temperature)), indoor_dry_bulb_temperature, linewidth=3.0, label='Indoor Dry Bulb Temperature', color='orange')
+        ax.plot(range(len(outdoor_dry_bulb_temperature)), outdoor_dry_bulb_temperature, linewidth=1.5, label='Outdoor Dry Bulb Temperature', color='xkcd:light purple')
 
         # Style
         ax.grid('on')
-        ax.set_title('Indoor Dry-bulb Temperature Evolution', fontweight='bold')
-        ax.set_ylabel('Temperature [°C]')
-        ax.legend(loc='upper left')
+        ax.set_ylabel('Temperature [°C]', fontsize=15)
+        ax.legend(ncols=3, bbox_to_anchor=(0.825, 1.15), fontsize=15)
 
     @staticmethod
     def render_device_control(ax: Axes, thermal_demand: np.ndarray, energy_from_battery: np.ndarray, time_steps: int):
@@ -172,13 +171,13 @@ class UtilsFunctions:
             color='xkcd:soft blue',
             alpha=0.2
         )
-        ax.set_ylabel('Cooling Demand [kWh]')
+        ax.set_ylabel('Cooling Demand [kW]', fontsize=15)
         ax.yaxis.label.set_color('xkcd:soft blue')
 
         # Energy from battery
         ax_twin = ax.twinx()
         ax_twin.bar(range(len(energy_from_battery)), energy_from_battery, color='xkcd:orange')
-        ax_twin.set_ylabel('Thermal Battery (Dis)Charge [kWh]')
+        ax_twin.set_ylabel('Thermal Battery (Dis)Charge [kW]', fontsize=15)
         ax_twin.yaxis.label.set_color('xkcd:orange')
 
         # Aligning plots
